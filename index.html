@@ -46,6 +46,14 @@ header{grid-column:1/-1;display:flex;justify-content:space-between;align-items:b
 .code input{flex:1;min-width:0;padding:8px 10px;border-radius:8px;border:1px solid var(--line);background:var(--bg);color:var(--ink);font:inherit;text-transform:uppercase}
 .code input:focus-visible{outline:3px solid var(--gold);outline-offset:2px}
 #codemsg{min-height:1.4em;margin:6px 0 0;font-size:.9rem;color:var(--mute)}
+#adm{background:var(--panel);color:var(--ink);border:1px solid var(--gold);border-radius:10px;padding:16px;max-width:380px;width:calc(100% - 32px)}
+#adm::backdrop{background:rgba(0,0,0,.6)}
+#adm h2{color:var(--gold)}
+#adm .g{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:10px}
+#adm input{flex:1;min-width:0;padding:8px;border-radius:8px;border:1px solid var(--line);background:var(--bg);color:var(--ink);font:inherit}
+#adm button{border:1px solid var(--line);background:transparent;color:var(--ink);border-radius:8px;padding:7px 10px;font:inherit;cursor:pointer}
+#adm button:focus-visible,#adm input:focus-visible,#rbbtn:focus-visible{outline:3px solid var(--gold);outline-offset:2px}
+#rbbtn{margin-top:8px}
 #evt{min-height:1.4em;color:var(--ok);font-size:.95rem}
 .foot{grid-column:1/-1;display:flex;gap:10px;justify-content:space-between;flex-wrap:wrap;color:var(--mute);font-size:.85rem}
 .foot button{background:none;border:1px solid var(--line);color:var(--mute);border-radius:6px;padding:4px 10px;cursor:pointer;font:inherit}
@@ -81,11 +89,25 @@ header{grid-column:1/-1;display:flex;justify-content:space-between;align-items:b
   <div id="bld"></div>
 </section>
 
+<section class="panel" style="grid-column:1/-1">
+  <h2>Wiedergeburt</h2>
+  <p style="margin:0" id="rbinfo"></p>
+  <button class="buy" id="rbbtn" disabled>Wiedergeboren werden</button>
+</section>
+
 <div class="foot">
   <span id="stat"></span>
   <span><button id="reset">Neu starten</button></span>
 </div>
 </main>
+<dialog id="adm" aria-label="Adminpanel">
+  <h2>Adminpanel</h2>
+  <div class="g"><input id="admmoney" inputmode="decimal" placeholder="Geld, z. B. 1e6" aria-label="Geldbetrag"><button data-a="money">Geld geben</button></div>
+  <div class="g"><button data-a="bld">+10 je Gebäude</button><button data-a="ups">Alle Verbesserungen</button></div>
+  <div class="g"><button data-a="rp">+5 Wiedergeburtspunkte</button><button data-a="codes">Codes zurücksetzen</button></div>
+  <div class="g"><span class="sub" style="align-self:center">Zeitraffer:</span><button data-a="t1">×1</button><button data-a="t10">×10</button><button data-a="t100">×100</button></div>
+  <div class="g"><button data-a="boom">Boom x5 (60 s)</button><button data-a="close">Schließen</button></div>
+</dialog>
 
 <script>
 const B=[
@@ -108,10 +130,12 @@ const U=[
  {id:'k2',n:'Café-Kette',d:'Café x2',cost:5000,t:'cafe',m:2},
  {id:'k3',n:'Industrie-Rösterei',d:'Röstmaschine x2',cost:40000,t:'roast',m:2}
 ];
-const S0=()=>({m:0,tot:0,own:{},up:{},codes:{},clicks:0,t:Date.now()});
+const S0=()=>({m:0,tot:0,own:{},up:{},codes:{},base:0,rp:0,rb:0,clicks:0,t:Date.now()});
 let S;
 try{S=JSON.parse(localStorage.getItem('roestwerk'))||S0()}catch(e){S=S0()}
-let evtMult=1,evtEnd=0;
+S.base=S.base||0;S.rp=S.rp||0;S.rb=S.rb||0;
+let evtMult=1,evtEnd=0,timeScale=1;
+const rbMult=()=>1+0.1*S.rp;
 
 const cost=b=>Math.ceil(b.base*Math.pow(1.15,S.own[b.id]||0));
 const fmt=n=>{
@@ -121,11 +145,11 @@ const fmt=n=>{
   return n.toLocaleString('de-DE',{maximumFractionDigits:2})+' '+u[i];
 };
 function mult(t){let m=1;for(const u of U)if(S.up[u.id]&&u.t===t)m*=u.m;return m}
-const clickVal=()=>1*mult('click')*(1+Math.floor((S.tot)/1e5)*0.1);
+const clickVal=()=>1*mult('click')*(1+Math.floor((S.tot)/1e5)*0.1)*rbMult();
 function perSec(){
   const all=mult('all');let s=0;
   for(const b of B)s+=(S.own[b.id]||0)*b.ps*mult(b.id)*all;
-  return s*(Date.now()<evtEnd?evtMult:1);
+  return s*rbMult()*(Date.now()<evtEnd?evtMult:1);
 }
 
 // UI aufbauen
@@ -168,7 +192,7 @@ function draw(){
   document.getElementById('buyall').disabled=!visUps().some(u=>S.m>=u.cost);
   const uh=visUps().map(u=>`<button class="up" id="u-${u.id}" ${S.m<u.cost?'disabled':''}><b>${u.n}</b> – ${fmt(u.cost)} €<small>${u.d}</small></button>`).join('')||'<span class="sub">Verdiene mehr, um neue Verbesserungen freizuschalten.</span>';
   if(uh!==lastUps){lastUps=uh;ups.innerHTML=uh}
-  document.getElementById('stat').textContent=`Gesamt verdient: ${fmt(S.tot)} € · Klicks: ${S.clicks}`;
+  drawRb();document.getElementById('stat').textContent=`Gesamt verdient: ${fmt(S.tot)} € · Klicks: ${S.clicks}`;
 }
 
 // Klick
@@ -187,7 +211,7 @@ rb.addEventListener('click',e=>{
 let last=Date.now();
 setInterval(()=>{
   const n=Date.now(),dt=(n-last)/1000;last=n;
-  const g=perSec()*dt;S.m+=g;S.tot+=g;draw();
+  const g=perSec()*dt*timeScale;S.m+=g;S.tot+=g;draw();
 },100);
 
 // Zufallsereignisse
@@ -203,6 +227,43 @@ setInterval(()=>{
   }
 },30000);
 
+// Wiedergeburt
+const rbGain=()=>Math.floor(Math.sqrt(Math.max(0,S.tot-S.base)/1e6));
+function drawRb(){
+  const g=rbGain();
+  document.getElementById('rbinfo').textContent=`Wiedergeburten: ${S.rb} · Punkte: ${S.rp} (+${S.rp*10} % auf Einnahmen und Klicks). `+(g>=1?`Jetzt wiedergeboren: +${g} Punkte.`:'Ab 1 Mio. € in diesem Durchgang möglich. Dabei werden Geld, Gebäude und Verbesserungen zurückgesetzt, Punkte und Codes bleiben.');
+  document.getElementById('rbbtn').disabled=g<1;
+}
+document.getElementById('rbbtn').onclick=()=>{
+  const g=rbGain();if(g<1)return;
+  if(!confirm(`Wiedergeboren werden? Du erhältst ${g} Punkte, Geld, Gebäude und Verbesserungen werden zurückgesetzt.`))return;
+  S.rp+=g;S.rb++;S.m=0;S.own={};S.up={};S.base=S.tot;evtEnd=0;save();draw();
+};
+
+// Adminpanel (Passwort-Hash; zum Ändern: SHA-256 des neuen Passworts eintragen)
+const ADMIN_HASH='9b6b5fae902e0295dd58e635ed28fb6117b3267ac574bd35fda3eac04954e053';
+async function sha(t){const b=await crypto.subtle.digest('SHA-256',new TextEncoder().encode(t));return [...new Uint8Array(b)].map(x=>x.toString(16).padStart(2,'0')).join('')}
+async function openAdmin(){
+  const pw=prompt('Admin-Passwort:');if(pw===null)return;
+  const msg=document.getElementById('codemsg');
+  try{
+    if(await sha(pw)===ADMIN_HASH)document.getElementById('adm').showModal();
+    else{msg.style.color='#e5735c';msg.textContent='Falsches Passwort.'}
+  }catch(e){msg.style.color='#e5735c';msg.textContent='Adminpanel braucht eine https-Seite oder localhost.'}
+}
+document.getElementById('adm').addEventListener('click',e=>{
+  const a=e.target.closest('button')?.dataset.a;if(!a)return;
+  if(a==='close'){e.currentTarget.close();return}
+  if(a==='money'){const v=parseFloat(document.getElementById('admmoney').value.replace(',','.'));if(v>0)add(v)}
+  if(a==='bld')B.forEach(b=>gift(b.id,10));
+  if(a==='ups')U.forEach(u=>S.up[u.id]=1);
+  if(a==='rp')S.rp+=5;
+  if(a==='codes')S.codes={};
+  if(a==='boom'){evtMult=5;evtEnd=Date.now()+6e4}
+  if(a[0]==='t')timeScale=+a.slice(1);
+  draw();
+});
+
 // Codes (jeder nur einmal einlösbar)
 S.codes=S.codes||{};
 const CODES={
@@ -210,13 +271,25 @@ const CODES={
  'KAFFEE':{t:'Frischer Kaffee: 2.500 €',f:()=>add(2500)},
  'GITHUB':{t:'Danke fürs Vorbeischauen: 10 Minuten Einnahmen, mindestens 5.000 €',f:()=>add(Math.max(5000,perSec()*600))},
  'BOOM':{t:'Boom! Einnahmen x5 für 60 Sekunden',f:()=>{evtMult=5;evtEnd=Date.now()+6e4}},
- 'ROESTWERK':{t:'Großer Auftrag: 1 Stunde Einnahmen, mindestens 25.000 €',f:()=>add(Math.max(25000,perSec()*3600))}
+ 'ROESTWERK':{t:'Großer Auftrag: 1 Stunde Einnahmen, mindestens 25.000 €',f:()=>add(Math.max(25000,perSec()*3600))},
+ 'ESPRESSO':{t:'Doppelter Espresso: 10.000 €',f:()=>add(10000)},
+ 'LATTE':{t:'Latte-Rausch: Einnahmen x3 für 120 Sekunden',f:()=>{evtMult=3;evtEnd=Date.now()+12e4}},
+ 'BOHNE':{t:'Goldene Bohne: 100 Klicks auf einmal',f:()=>add(clickVal()*100)},
+ 'WAGEN':{t:'Geschenkt: 5 Kaffeewagen',f:()=>gift('cart',5)},
+ 'CAFEHAUS':{t:'Geschenkt: 3 Cafés',f:()=>gift('cafe',3)},
+ 'MASCHINE':{t:'Geschenkt: 2 Röstmaschinen',f:()=>gift('roast',2)},
+ 'PLANTAGE':{t:'Geschenkt: 1 Kaffeeplantage',f:()=>gift('farm',1)},
+ 'MILLION':{t:'Investor steigt ein: 250.000 €',f:()=>add(250000)},
+ 'WELTKAFFEE':{t:'Weltmarkt: 3 Stunden Einnahmen, mindestens 100.000 €',f:()=>add(Math.max(1e5,perSec()*10800))},
+ 'REBIRTH':{t:'Ein Wiedergeburtspunkt (+10 % auf alles)',f:()=>{S.rp++}}
 };
 function add(g){S.m+=g;S.tot+=g}
+function gift(id,n){S.own[id]=(S.own[id]||0)+n}
 function redeem(){
   const inp=document.getElementById('codein'),msg=document.getElementById('codemsg');
   const k=inp.value.trim().toUpperCase().replace('Ö','OE');
   if(!k){msg.textContent='Bitte gib einen Code ein.';return}
+  if(k==='ADMIN'){inp.value='';msg.textContent='';openAdmin();return}
   const c=CODES[k];
   if(!c){msg.style.color='#e5735c';msg.textContent='Dieser Code ist ungültig. Prüfe die Schreibweise.';return}
   if(S.codes[k]){msg.style.color='#e5735c';msg.textContent='Diesen Code hast du schon eingelöst.';return}
