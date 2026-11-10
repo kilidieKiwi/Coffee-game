@@ -1,0 +1,208 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Röstwerk – Kaffee-Tycoon</title>
+<style>
+:root{--bg:#12201b;--panel:#1b2e27;--line:#2c453b;--ink:#e9f0ea;--mute:#8fa89b;--gold:#f0b43c;--ok:#6fd49a}
+@media (prefers-color-scheme:light){:root{--bg:#eef3ee;--panel:#fff;--line:#cfdcd3;--ink:#16261f;--mute:#586d62;--gold:#b97a00;--ok:#1f8a54}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.45 Georgia,"Times New Roman",serif}
+main{max-width:1000px;margin:0 auto;padding:16px;display:grid;gap:16px;grid-template-columns:1fr 1.1fr}
+@media(max-width:760px){main{grid-template-columns:1fr}}
+h1{margin:0;font-size:1.6rem;letter-spacing:.5px}
+h2{margin:0 0 8px;font-size:1.05rem;color:var(--mute);font-weight:normal}
+.panel{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:14px}
+header{grid-column:1/-1;display:flex;justify-content:space-between;align-items:baseline;flex-wrap:wrap;gap:8px}
+.money{font-size:2.2rem;color:var(--gold);font-variant-numeric:tabular-nums}
+.sub{color:var(--mute);font-size:.9rem}
+#roast{width:100%;aspect-ratio:1.3;border:0;border-radius:10px;cursor:pointer;background:radial-gradient(circle at 50% 40%,#3b2a1c,#1a110a);color:var(--gold);font:inherit;font-size:1.1rem;position:relative;overflow:hidden;user-select:none;touch-action:manipulation}
+#roast:active{transform:scale(.98)}
+#roast:focus-visible,button:focus-visible{outline:3px solid var(--gold);outline-offset:2px}
+#bean{font-size:5rem;display:block;transition:transform .08s}
+#roast:active #bean{transform:scale(1.15) rotate(12deg)}
+.pop{position:absolute;color:var(--gold);font-weight:bold;pointer-events:none;animation:up .8s ease-out forwards}
+@keyframes up{to{transform:translateY(-70px);opacity:0}}
+@media(prefers-reduced-motion:reduce){.pop{animation:none;opacity:0}}
+.row{display:flex;align-items:center;gap:10px;padding:9px 0;border-bottom:1px solid var(--line)}
+.row:last-child{border:0}
+.row .ic{font-size:1.6rem;width:2rem;text-align:center}
+.row .t{flex:1;min-width:0}
+.row b{display:block}
+.buy{background:var(--gold);color:#1a1206;border:0;border-radius:8px;padding:8px 12px;font:inherit;font-weight:bold;cursor:pointer;min-width:96px;font-variant-numeric:tabular-nums}
+.buy:disabled{background:var(--line);color:var(--mute);cursor:not-allowed}
+.up{border:1px solid var(--line);background:transparent;color:var(--ink);border-radius:8px;padding:8px 10px;font:inherit;cursor:pointer;text-align:left;width:100%;margin-bottom:6px}
+.up:disabled{opacity:.45;cursor:not-allowed}
+.up:not(:disabled){border-color:var(--gold)}
+.up small{display:block;color:var(--mute)}
+.code{display:flex;gap:8px}
+.code input{flex:1;min-width:0;padding:8px 10px;border-radius:8px;border:1px solid var(--line);background:var(--bg);color:var(--ink);font:inherit;text-transform:uppercase}
+.code input:focus-visible{outline:3px solid var(--gold);outline-offset:2px}
+#codemsg{min-height:1.4em;margin:6px 0 0;font-size:.9rem;color:var(--mute)}
+#evt{min-height:1.4em;color:var(--ok);font-size:.95rem}
+.foot{grid-column:1/-1;display:flex;gap:10px;justify-content:space-between;flex-wrap:wrap;color:var(--mute);font-size:.85rem}
+.foot button{background:none;border:1px solid var(--line);color:var(--mute);border-radius:6px;padding:4px 10px;cursor:pointer;font:inherit}
+</style>
+</head>
+<body>
+<main>
+<header>
+  <h1>Röstwerk</h1>
+  <div style="text-align:right"><div class="money" id="money">0 €</div><div class="sub" id="ps">0 € pro Sekunde</div></div>
+</header>
+
+<section>
+  <button id="roast" aria-label="Kaffee rösten"><span id="bean">☕</span>Rösten · <span id="cl">+1 €</span></button>
+  <div class="panel" style="margin-top:16px">
+    <h2>Verbesserungen</h2>
+    <div id="ups"></div>
+  </div>
+  <div class="panel" style="margin-top:16px">
+    <h2>Code einlösen</h2>
+    <div class="code"><input id="codein" maxlength="24" placeholder="Code eingeben" autocomplete="off" aria-label="Code"><button class="buy" id="coderedeem">Einlösen</button></div>
+    <p id="codemsg" aria-live="polite"></p>
+  </div>
+  <p id="evt" aria-live="polite"></p>
+</section>
+
+<section class="panel">
+  <h2>Betrieb ausbauen</h2>
+  <div id="bld"></div>
+</section>
+
+<div class="foot">
+  <span id="stat"></span>
+  <span><button id="reset">Neu starten</button></span>
+</div>
+</main>
+
+<script>
+const B=[
+ {id:'cart',n:'Kaffeewagen',ic:'🛒',base:15,ps:0.2,d:'Verkauf am Straßenrand'},
+ {id:'cafe',n:'Café',ic:'☕',base:120,ps:1.5,d:'Stammkundschaft'},
+ {id:'roast',n:'Röstmaschine',ic:'⚙️',base:900,ps:9,d:'Frische Bohnen in Masse'},
+ {id:'farm',n:'Kaffeeplantage',ic:'🌱',base:7500,ps:55,d:'Eigener Anbau'},
+ {id:'ship',n:'Frachtschiff',ic:'🚢',base:60000,ps:340,d:'Export in alle Welt'},
+ {id:'lab',n:'Aroma-Labor',ic:'🧪',base:500000,ps:2200,d:'Neue Sorten entwickeln'},
+ {id:'space',n:'Orbital-Plantage',ic:'🛰️',base:6e6,ps:15000,d:'Kaffee ohne Schwerkraft'}
+];
+const U=[
+ {id:'c1',n:'Bessere Mühle',d:'Klick x2',cost:100,t:'click',m:2},
+ {id:'c2',n:'Barista-Kurs',d:'Klick x3',cost:2500,t:'click',m:3},
+ {id:'c3',n:'Goldene Bohne',d:'Klick x5',cost:90000,t:'click',m:5},
+ {id:'g1',n:'Bio-Siegel',d:'Alle Gebäude +25 %',cost:3000,t:'all',m:1.25},
+ {id:'g2',n:'Social-Media-Kampagne',d:'Alle Gebäude +50 %',cost:75000,t:'all',m:1.5},
+ {id:'g3',n:'Eigene Marke',d:'Alle Gebäude x2',cost:2e6,t:'all',m:2},
+ {id:'k1',n:'Wagen-Flotte',d:'Kaffeewagen x2',cost:600,t:'cart',m:2},
+ {id:'k2',n:'Café-Kette',d:'Café x2',cost:5000,t:'cafe',m:2},
+ {id:'k3',n:'Industrie-Rösterei',d:'Röstmaschine x2',cost:40000,t:'roast',m:2}
+];
+const S0=()=>({m:0,tot:0,own:{},up:{},codes:{},clicks:0,t:Date.now()});
+let S;
+try{S=JSON.parse(localStorage.getItem('roestwerk'))||S0()}catch(e){S=S0()}
+let evtMult=1,evtEnd=0;
+
+const cost=b=>Math.ceil(b.base*Math.pow(1.15,S.own[b.id]||0));
+const fmt=n=>{
+  if(n<1e4)return n.toLocaleString('de-DE',{maximumFractionDigits:n<100?1:0});
+  const u=['','Tsd.','Mio.','Mrd.','Bio.'];let i=0;
+  while(n>=1000&&i<4){n/=1000;i++}
+  return n.toLocaleString('de-DE',{maximumFractionDigits:2})+' '+u[i];
+};
+function mult(t){let m=1;for(const u of U)if(S.up[u.id]&&u.t===t)m*=u.m;return m}
+const clickVal=()=>1*mult('click')*(1+Math.floor((S.tot)/1e5)*0.1);
+function perSec(){
+  const all=mult('all');let s=0;
+  for(const b of B)s+=(S.own[b.id]||0)*b.ps*mult(b.id)*all;
+  return s*(Date.now()<evtEnd?evtMult:1);
+}
+
+// UI aufbauen
+const bld=document.getElementById('bld'),ups=document.getElementById('ups');
+bld.innerHTML=B.map(b=>`<div class="row"><div class="ic">${b.ic}</div><div class="t"><b>${b.n} <span class="sub" id="o-${b.id}"></span></b><span class="sub">${b.d} · <span id="p-${b.id}"></span> €/s je Stück</span></div><button class="buy" id="b-${b.id}"></button></div>`).join('');
+bld.onclick=e=>{const btn=e.target.closest('.buy');if(!btn)return;const b=B.find(x=>'b-'+x.id===btn.id),c=cost(b);if(S.m>=c){S.m-=c;S.own[b.id]=(S.own[b.id]||0)+1;draw()}};
+ups.onclick=e=>{const btn=e.target.closest('.up');if(!btn)return;const u=U.find(x=>'u-'+x.id===btn.id);if(u&&!S.up[u.id]&&S.m>=u.cost){S.m-=u.cost;S.up[u.id]=1;draw()}};
+
+function draw(){
+  document.getElementById('money').textContent=fmt(S.m)+' €';
+  document.getElementById('ps').textContent=fmt(perSec())+' € pro Sekunde'+(Date.now()<evtEnd?' (Boom!)':'');
+  document.getElementById('cl').textContent='+'+fmt(clickVal())+' €';
+  for(const b of B){
+    const c=cost(b),btn=document.getElementById('b-'+b.id);
+    btn.textContent=fmt(c)+' €';btn.disabled=S.m<c;
+    document.getElementById('o-'+b.id).textContent='×'+(S.own[b.id]||0);
+    document.getElementById('p-'+b.id).textContent=fmt(b.ps*mult(b.id)*mult('all'));
+  }
+  ups.innerHTML=U.filter(u=>!S.up[u.id]&&(S.tot>=u.cost*0.3)).slice(0,4).map(u=>`<button class="up" id="u-${u.id}" ${S.m<u.cost?'disabled':''}><b>${u.n}</b> – ${fmt(u.cost)} €<small>${u.d}</small></button>`).join('')||'<span class="sub">Verdiene mehr, um neue Verbesserungen freizuschalten.</span>';
+  document.getElementById('stat').textContent=`Gesamt verdient: ${fmt(S.tot)} € · Klicks: ${S.clicks}`;
+}
+
+// Klick
+const rb=document.getElementById('roast');
+rb.addEventListener('click',e=>{
+  const v=clickVal();S.m+=v;S.tot+=v;S.clicks++;
+  const p=document.createElement('span');p.className='pop';p.textContent='+'+fmt(v);
+  const r=rb.getBoundingClientRect();
+  p.style.left=((e.clientX||r.left+r.width/2)-r.left-10)+'px';
+  p.style.top=((e.clientY||r.top+r.height/2)-r.top-20)+'px';
+  rb.appendChild(p);setTimeout(()=>p.remove(),800);
+  draw();
+});
+
+// Game-Loop
+let last=Date.now();
+setInterval(()=>{
+  const n=Date.now(),dt=(n-last)/1000;last=n;
+  const g=perSec()*dt;S.m+=g;S.tot+=g;draw();
+},100);
+
+// Zufallsereignisse
+const evts=[
+ {t:'Ein Food-Blogger lobt euch: Einnahmen x3 für 20 s!',f:()=>{evtMult=3;evtEnd=Date.now()+2e4}},
+ {t:'Touristenbus hält an: Bonus!',f:()=>{const g=Math.max(50,perSec()*30);S.m+=g;S.tot+=g;}},
+ {t:'Kaffeepreis steigt: Einnahmen x2 für 15 s!',f:()=>{evtMult=2;evtEnd=Date.now()+1.5e4}}
+];
+setInterval(()=>{
+  if(Math.random()<0.5&&S.tot>50){
+    const e=evts[Math.floor(Math.random()*evts.length)];e.f();
+    const el=document.getElementById('evt');el.textContent=e.t;setTimeout(()=>el.textContent='',7000);
+  }
+},30000);
+
+// Codes (jeder nur einmal einlösbar)
+S.codes=S.codes||{};
+const CODES={
+ 'START':{t:'Startkapital: 500 €',f:()=>add(500)},
+ 'KAFFEE':{t:'Frischer Kaffee: 2.500 €',f:()=>add(2500)},
+ 'GITHUB':{t:'Danke fürs Vorbeischauen: 10 Minuten Einnahmen, mindestens 5.000 €',f:()=>add(Math.max(5000,perSec()*600))},
+ 'BOOM':{t:'Boom! Einnahmen x5 für 60 Sekunden',f:()=>{evtMult=5;evtEnd=Date.now()+6e4}},
+ 'ROESTWERK':{t:'Großer Auftrag: 1 Stunde Einnahmen, mindestens 25.000 €',f:()=>add(Math.max(25000,perSec()*3600))}
+};
+function add(g){S.m+=g;S.tot+=g}
+function redeem(){
+  const inp=document.getElementById('codein'),msg=document.getElementById('codemsg');
+  const k=inp.value.trim().toUpperCase().replace('Ö','OE');
+  if(!k){msg.textContent='Bitte gib einen Code ein.';return}
+  const c=CODES[k];
+  if(!c){msg.style.color='#e5735c';msg.textContent='Dieser Code ist ungültig. Prüfe die Schreibweise.';return}
+  if(S.codes[k]){msg.style.color='#e5735c';msg.textContent='Diesen Code hast du schon eingelöst.';return}
+  S.codes[k]=1;c.f();save();draw();
+  msg.style.color='var(--ok)';msg.textContent='Eingelöst: '+c.t;inp.value='';
+}
+document.getElementById('coderedeem').onclick=redeem;
+document.getElementById('codein').addEventListener('keydown',e=>{if(e.key==='Enter')redeem()});
+
+// Speichern + Offline-Fortschritt
+function save(){S.t=Date.now();try{localStorage.setItem('roestwerk',JSON.stringify(S))}catch(e){}}
+setInterval(save,5000);addEventListener('beforeunload',save);
+const away=Math.min((Date.now()-(S.t||Date.now()))/1000,8*3600);
+if(away>60&&perSec()>0){
+  const g=perSec()*away*0.5;S.m+=g;S.tot+=g;
+  document.getElementById('evt').textContent=`Willkommen zurück! Während deiner Abwesenheit hast du ${fmt(g)} € verdient.`;
+}
+document.getElementById('reset').onclick=()=>{if(confirm('Spielstand wirklich löschen?')){S=S0();save();draw()}};
+draw();
+</script>
+</body>
+</html>
