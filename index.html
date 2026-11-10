@@ -32,6 +32,12 @@ header{grid-column:1/-1;display:flex;justify-content:space-between;align-items:b
 .row b{display:block}
 .buy{background:var(--gold);color:#1a1206;border:0;border-radius:8px;padding:8px 12px;font:inherit;font-weight:bold;cursor:pointer;min-width:96px;font-variant-numeric:tabular-nums}
 .buy:disabled{background:var(--line);color:var(--mute);cursor:not-allowed}
+.qty{display:flex;gap:6px;margin-bottom:8px}
+.qty button,#buyall{border:1px solid var(--line);background:transparent;color:var(--ink);border-radius:8px;padding:6px 12px;font:inherit;cursor:pointer}
+.qty button[aria-pressed=true]{background:var(--gold);color:#1a1206;border-color:var(--gold);font-weight:bold}
+#buyall{width:100%;margin-bottom:8px;border-color:var(--gold)}
+#buyall:disabled{opacity:.45;border-color:var(--line);cursor:not-allowed}
+.qty button:focus-visible,#buyall:focus-visible{outline:3px solid var(--gold);outline-offset:2px}
 .up{border:1px solid var(--line);background:transparent;color:var(--ink);border-radius:8px;padding:8px 10px;font:inherit;cursor:pointer;text-align:left;width:100%;margin-bottom:6px}
 .up:disabled{opacity:.45;cursor:not-allowed}
 .up:not(:disabled){border-color:var(--gold)}
@@ -56,6 +62,7 @@ header{grid-column:1/-1;display:flex;justify-content:space-between;align-items:b
   <button id="roast" aria-label="Kaffee rösten"><span id="bean">☕</span>Rösten · <span id="cl">+1 €</span></button>
   <div class="panel" style="margin-top:16px">
     <h2>Verbesserungen</h2>
+    <button id="buyall" disabled>Alle verfügbaren kaufen</button>
     <div id="ups"></div>
   </div>
   <div class="panel" style="margin-top:16px">
@@ -68,6 +75,9 @@ header{grid-column:1/-1;display:flex;justify-content:space-between;align-items:b
 
 <section class="panel">
   <h2>Betrieb ausbauen</h2>
+  <div class="qty" id="qty" role="group" aria-label="Kaufmenge">
+    <button data-q="1" aria-pressed="true">×1</button><button data-q="10" aria-pressed="false">×10</button><button data-q="100" aria-pressed="false">×100</button><button data-q="0" aria-pressed="false">Max</button>
+  </div>
   <div id="bld"></div>
 </section>
 
@@ -121,7 +131,27 @@ function perSec(){
 // UI aufbauen
 const bld=document.getElementById('bld'),ups=document.getElementById('ups');
 bld.innerHTML=B.map(b=>`<div class="row"><div class="ic">${b.ic}</div><div class="t"><b>${b.n} <span class="sub" id="o-${b.id}"></span></b><span class="sub">${b.d} · <span id="p-${b.id}"></span> €/s je Stück</span></div><button class="buy" id="b-${b.id}"></button></div>`).join('');
-bld.onclick=e=>{const btn=e.target.closest('.buy');if(!btn)return;const b=B.find(x=>'b-'+x.id===btn.id),c=cost(b);if(S.m>=c){S.m-=c;S.own[b.id]=(S.own[b.id]||0)+1;draw()}};
+let qty=1; // 0 = Max
+const costN=(b,n)=>Math.ceil(b.base*Math.pow(1.15,S.own[b.id]||0)*(Math.pow(1.15,n)-1)/0.15);
+function maxN(b){let n=0;while(n<1000&&costN(b,n+1)<=S.m)n++;return n}
+const amount=b=>qty===0?maxN(b):qty;
+document.getElementById('qty').onclick=e=>{
+  const q=e.target.closest('button');if(!q)return;
+  qty=+q.dataset.q;
+  document.querySelectorAll('#qty button').forEach(x=>x.setAttribute('aria-pressed',x===q));
+  draw();
+};
+bld.onclick=e=>{
+  const btn=e.target.closest('.buy');if(!btn)return;
+  const b=B.find(x=>'b-'+x.id===btn.id),n=amount(b);
+  if(n>0&&S.m>=costN(b,n)){S.m-=costN(b,n);S.own[b.id]=(S.own[b.id]||0)+n;draw()}
+};
+const visUps=()=>U.filter(u=>!S.up[u.id]&&(S.tot>=u.cost*0.3)).slice(0,4);
+document.getElementById('buyall').onclick=()=>{
+  for(const u of visUps().sort((a,b)=>a.cost-b.cost))if(S.m>=u.cost){S.m-=u.cost;S.up[u.id]=1}
+  draw();
+};
+let lastUps='';
 ups.onclick=e=>{const btn=e.target.closest('.up');if(!btn)return;const u=U.find(x=>'u-'+x.id===btn.id);if(u&&!S.up[u.id]&&S.m>=u.cost){S.m-=u.cost;S.up[u.id]=1;draw()}};
 
 function draw(){
@@ -129,12 +159,15 @@ function draw(){
   document.getElementById('ps').textContent=fmt(perSec())+' € pro Sekunde'+(Date.now()<evtEnd?' (Boom!)':'');
   document.getElementById('cl').textContent='+'+fmt(clickVal())+' €';
   for(const b of B){
-    const c=cost(b),btn=document.getElementById('b-'+b.id);
-    btn.textContent=fmt(c)+' €';btn.disabled=S.m<c;
+    const n=amount(b),btn=document.getElementById('b-'+b.id);
+    const c=n>0?costN(b,n):cost(b);
+    btn.textContent=(qty===1?'':'×'+Math.max(n,1)+' · ')+fmt(c)+' €';btn.disabled=n===0||S.m<c;
     document.getElementById('o-'+b.id).textContent='×'+(S.own[b.id]||0);
     document.getElementById('p-'+b.id).textContent=fmt(b.ps*mult(b.id)*mult('all'));
   }
-  ups.innerHTML=U.filter(u=>!S.up[u.id]&&(S.tot>=u.cost*0.3)).slice(0,4).map(u=>`<button class="up" id="u-${u.id}" ${S.m<u.cost?'disabled':''}><b>${u.n}</b> – ${fmt(u.cost)} €<small>${u.d}</small></button>`).join('')||'<span class="sub">Verdiene mehr, um neue Verbesserungen freizuschalten.</span>';
+  document.getElementById('buyall').disabled=!visUps().some(u=>S.m>=u.cost);
+  const uh=visUps().map(u=>`<button class="up" id="u-${u.id}" ${S.m<u.cost?'disabled':''}><b>${u.n}</b> – ${fmt(u.cost)} €<small>${u.d}</small></button>`).join('')||'<span class="sub">Verdiene mehr, um neue Verbesserungen freizuschalten.</span>';
+  if(uh!==lastUps){lastUps=uh;ups.innerHTML=uh}
   document.getElementById('stat').textContent=`Gesamt verdient: ${fmt(S.tot)} € · Klicks: ${S.clicks}`;
 }
 
