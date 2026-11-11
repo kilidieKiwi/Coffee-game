@@ -65,6 +65,8 @@ header{grid-column:1/-1;display:flex;justify-content:space-between;align-items:b
 .cell{aspect-ratio:1;border:1px dashed var(--line);border-radius:8px;background:transparent;color:var(--mute);font-size:1.8rem;cursor:pointer}
 .cell.f{border-style:solid;border-color:var(--gold);color:var(--ink)}
 .cell:focus-visible,#fac button:focus-visible{outline:3px solid var(--gold);outline-offset:2px}
+.bar{height:8px;background:var(--line);border-radius:4px;overflow:hidden;margin:4px 0}
+.bar i{display:block;height:100%;background:var(--gold);width:0}
 #evt{min-height:1.4em;color:var(--ok);font-size:.95rem}
 .foot{grid-column:1/-1;display:flex;gap:10px;justify-content:space-between;flex-wrap:wrap;color:var(--mute);font-size:.85rem}
 .foot button{background:none;border:1px solid var(--line);color:var(--mute);border-radius:6px;padding:4px 10px;cursor:pointer;font:inherit}
@@ -102,7 +104,15 @@ header{grid-column:1/-1;display:flex;justify-content:space-between;align-items:b
 
 <section class="panel" style="grid-column:1/-1">
   <h2>Fabrik</h2>
-  <div id="fac"></div>
+  <div id="fac">
+  <p class="sub" id="facl" style="margin:0"></p>
+  <div id="facb" hidden>
+    <p id="facsum" style="margin:0 0 10px"></p>
+    <div id="stg"></div>
+    <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:10px"><button class="buy" id="hire" data-act="hire"></button><button class="buy" id="spb" data-act="sp"></button><button class="buy" id="trb" data-act="tr"></button></div>
+    <p class="sub">Die Linie: Pflanzung → Röster → Verpackung → Verkauf. Statt Förderbändern tragen deine Arbeiter die Waren zwischen den Stationen. Verteile sie mit + und − auf die drei Wege. Richtwert für 1 Verkauf: 1 Verpackung, 2 Röster, 2 Pflanzungen, dazu 2 Träger für Bohnen und je 1 für Kaffee und Pakete. Der größte Engpass bestimmt den Gewinn.</p>
+  </div>
+</div>
 </section>
 
 <section class="panel" style="grid-column:1/-1">
@@ -163,12 +173,12 @@ const U=[
  {id:'k6',n:'Zeitschleife',d:'Zeitmaschine x2',cost:2e9,t:'time',m:2},
  {id:'g5',n:'Kosmische Marke',d:'Alle Gebäude x5',cost:5e10,t:'all',m:5}
 ];
-const S0=()=>({m:0,tot:0,own:{},up:{},codes:{},base:0,rp:0,rb:0,ach:{},gb:0,mute:0,pu:{},rps:0,fac:{g:Array(12).fill(0),w:0,tr:0},clicks:0,t:Date.now()});
+const S0=()=>({m:0,tot:0,own:{},up:{},codes:{},base:0,rp:0,rb:0,ach:{},gb:0,mute:0,pu:{},rps:0,fac:newFac(),clicks:0,t:Date.now()});
 let S;
 try{S=JSON.parse(localStorage.getItem('roestwerk'))||S0()}catch(e){S=S0()}
-S.base=S.base||0;S.rp=S.rp||0;S.rb=S.rb||0;S.ach=S.ach||{};S.gb=S.gb||0;S.pu=S.pu||{};S.rps=S.rps||0;S.fac=S.fac||{g:Array(12).fill(0),w:0,tr:0};
+S.base=S.base||0;S.rp=S.rp||0;S.rb=S.rb||0;S.ach=S.ach||{};S.gb=S.gb||0;S.pu=S.pu||{};S.rps=S.rps||0;if(!S.fac||S.fac.v!==2)S.fac=newFac();
 let evtMult=1,evtEnd=0,timeScale=1;
-const rbMult=()=>(1+0.1*S.rp)*(1+(S.pu.ach?0.04:0.02)*Object.keys(S.ach).length)*(1+facStats().pw/100);
+const rbMult=()=>(1+0.1*S.rp)*(1+(S.pu.ach?0.04:0.02)*Object.keys(S.ach).length);
 
 const cost=b=>Math.ceil(b.base*Math.pow(1.15,S.own[b.id]||0)*(S.pu.disc?.9:1));
 const fmt=n=>{
@@ -244,7 +254,7 @@ rb.addEventListener('click',e=>{
 let last=Date.now();
 setInterval(()=>{
   const n=Date.now(),dt=(n-last)/1000;last=n;
-  const g=perSec()*dt*timeScale;S.m+=g;S.tot+=g;draw();
+  facTick(dt*timeScale);const g=perSec()*dt*timeScale;S.m+=g;S.tot+=g;draw();
 },100);
 
 // Zufallsereignisse
@@ -286,8 +296,8 @@ const A=[
  ['rb10','Seelenwanderer (10 Wiedergeburten)',()=>S.rb>=10],
  ['shop3','Stammkunde im Shop (3 Shop-Upgrades)',()=>Object.keys(S.pu).length>=3],
  ['t1e12','Billionär (1 Bio. €)',()=>S.tot>=1e12],
- ['fac','Fabrikant (erste Station gebaut)',()=>S.fac.g.some(x=>x)],
- ['fac2','Vollauslastung (12 Stationen, alle besetzt)',()=>S.fac.g.every(x=>x)&&facStats().st>=1]
+ ['fac','Fabrikant (erste Station gebaut)',()=>S.fac.n.some(x=>x>0)],
+ ['fac2','Produktionslinie (alle 4 Stationen gebaut, Träger auf jedem Weg)',()=>S.fac.n.every(x=>x>0)&&S.fac.a.every(x=>x>0)]
 ];
 let lastAch='';
 function drawAch(){
@@ -319,54 +329,69 @@ function spawnBean(){
 }
 (function beanLoop(){setTimeout(()=>{if(!document.hidden&&S.tot>20)spawnBean();beanLoop()},(S.pu.gold?.5:1)*(45000+Math.random()*60000))})();
 
-// Fabrik (ab Level 5 = 100.000 € Gesamteinnahmen)
+// Fabrik (ab Level 5 = 100.000 € Gesamteinnahmen): Produktionskette mit Trägern statt Förderbändern
 function level(){return Math.floor(Math.log10(Math.max(1,S.tot)))}
-const FS={
- roast:{n:'Röstlinie',ic:'⚙️',c:5e4,p:10,r:2},
- pack:{n:'Verpackung',ic:'📦',c:8e4,p:7,r:2},
- store:{n:'Lager',ic:'🏬',c:3e4,p:5,r:1},
- lab:{n:'Labor',ic:'🧪',c:3e5,p:14,r:3}
-};
-let facSel='roast',lastFac='';
-const cnt=k=>S.fac.g.filter(x=>x===k).length;
-const stCost=(k,o)=>Math.ceil(FS[k].c*Math.pow(1.2,cnt(k)+o));
-const hireCost=()=>Math.ceil(2000*Math.pow(1.12,S.fac.w));
-const trainCost=()=>Math.ceil(2e5*Math.pow(3,S.fac.tr));
-function facStats(){
-  const g=S.fac.g;let pw=0,req=0;
-  g.forEach((k,i)=>{
-    if(!k)return;const f=FS[k];req+=f.r;
-    const x=i%4,y=Math.floor(i/4),t=new Set();
-    [[x-1,y],[x+1,y],[x,y-1],[x,y+1]].forEach(([a,b])=>{if(a<0||a>3||b<0||b>2)return;const o=g[b*4+a];if(o&&o!==k)t.add(o)});
-    pw+=f.p*(1+0.15*t.size);
+function newFac(){return {v:2,n:[0,0,0,0],t:0,a:[0,0,0],sp:0,tr:0,b:[0,0,0,0,0,0]}}
+const ST=[
+ {n:'Pflanzung',ic:'🌱',c:4e4},{n:'Röster',ic:'⚙️',c:6e4},{n:'Verpackung',ic:'📦',c:9e4},{n:'Verkauf',ic:'🏬',c:5e4}
+];
+const IN=[null,1,3,5],OUT=[0,2,4,null],WAIT=['','Bohnen','Kaffee','Pakete'];
+let facRate=0;
+const sc=i=>Math.ceil(ST[i].c*Math.pow(1.2,S.fac.n[i]));
+const hc=()=>Math.ceil(2000*Math.pow(1.12,S.fac.t));
+const spc=()=>Math.ceil(3e5*Math.pow(2.5,S.fac.sp));
+const trc=()=>Math.ceil(2e5*Math.pow(2.5,S.fac.tr));
+const facVal=()=>2*Math.pow(10,level()-3)*rbMult();
+const fcap=i=>20*Math.max(1,S.fac.n[i]);
+function facTick(dt){
+  if(level()<5||dt<=0)return;
+  const f=S.fac,n=f.n,b=f.b,m=1+0.25*f.sp,cr=2*(1+0.25*f.tr);
+  b[0]=Math.min(fcap(0),b[0]+2*n[0]*m*dt);
+  let x=Math.min(2*n[1]*m*dt,b[1],(fcap(1)-b[2])*2);if(x>0){b[1]-=x;b[2]+=x/2}
+  x=Math.min(2*n[2]*m*dt,b[3],(fcap(2)-b[4])*2);if(x>0){b[3]-=x;b[4]+=x/2}
+  const q=Math.max(0,Math.min(n[3]*m*dt,b[5]));b[5]-=q;
+  const earn=q*facVal();if(earn>0)add(earn);
+  facRate+=(earn/dt-facRate)*Math.min(1,dt*2);
+  [[0,1,1],[2,3,2],[4,5,3]].forEach(([s0,d0,ds],i)=>{
+    const y=Math.min(f.a[i]*cr*dt,b[s0],fcap(ds)-b[d0]);if(y>0){b[s0]-=y;b[d0]+=y}
   });
-  const st=req?Math.min(1,S.fac.w/req):0,eff=st*(1+0.1*S.fac.tr);
-  return {pw:pw*eff,req,st,eff};
 }
+document.getElementById('stg').innerHTML=ST.map((s,i)=>`<div class="row"><div class="ic">${s.ic}</div><div class="t"><b>${s.n} <span id="sn${i}"></span></b><span class="sub" id="sb${i}"></span><div class="bar"><i id="sv${i}"></i></div><span class="sub" id="ss${i}"></span></div><div style="display:flex;flex-direction:column;gap:4px"><button class="buy" data-act="build" data-i="${i}" id="bb${i}"></button><button class="buy" style="background:transparent;color:var(--ink);border:1px solid var(--line)" data-act="dem" data-i="${i}">Abreißen</button></div></div>`+(i<3?`<div class="row" style="padding-left:2rem"><span>👷</span><span class="t sub" id="rt${i}"></span><button class="buy" data-act="asg" data-i="${i}" data-d="-1" style="min-width:44px" aria-label="Träger abziehen">−</button><button class="buy" data-act="asg" data-i="${i}" data-d="1" style="min-width:44px" aria-label="Träger hinzufügen">+</button></div>`:'')).join('');
 function drawFac(){
-  let h;
-  if(level()<5)h=`<p class="sub" style="margin:0">Die Fabrik wird ab Level 5 freigeschaltet (100.000 € Gesamteinnahmen). Dein Level: ${level()}.</p>`;
-  else{
-    const st=facStats(),f=S.fac;
-    h=`<p style="margin:0 0 8px">Arbeiter: <b>${f.w}</b> von ${st.req} nötig · Besetzung ${Math.round(st.st*100)} % · Schulung ${f.tr}/5 · Effizienz <b>${Math.round(st.eff*100)} %</b><br>Leistung ${fmt(st.pw)} → <b>+${fmt(st.pw)} %</b> auf alle Einnahmen und Klicks</p>
-<div class="qty" role="group" aria-label="Station wählen" style="flex-wrap:wrap">${Object.keys(FS).map(k=>`<button data-sel="${k}" aria-pressed="${facSel===k}">${FS[k].ic} ${FS[k].n} · ${fmt(stCost(k,0))} €</button>`).join('')}</div>
-<div class="fgrid">${f.g.map((k,i)=>`<button class="cell${k?' f':''}" data-cell="${i}" aria-label="${k?FS[k].n+' abreißen':'Leerer Bauplatz'}">${k?FS[k].ic:'+'}</button>`).join('')}</div>
-<div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:10px"><button class="buy" data-act="hire" ${f.w>=40||S.m<hireCost()?'disabled':''}>Arbeiter einstellen · ${fmt(hireCost())} €</button><button class="buy" data-act="train" ${f.tr>=5||S.m<trainCost()?'disabled':''}>${f.tr>=5?'Schulung max.':'Schulung · '+fmt(trainCost())+' €'}</button></div>
-<p class="sub">Tipp: Verschiedene Stationen nebeneinander geben +15 % Leistung je Nachbartyp. Arbeiter pro Station: Röstlinie 2, Verpackung 2, Lager 1, Labor 3. Zu wenig Arbeiter senken die Effizienz.</p>`;
-  }
-  if(h!==lastFac){lastFac=h;document.getElementById('fac').innerHTML=h}
+  const lk=level()<5;
+  document.getElementById('facl').textContent=lk?`Die Fabrik wird ab Level 5 freigeschaltet (100.000 € Gesamteinnahmen). Dein Level: ${level()}.`:'';
+  document.getElementById('facb').hidden=lk;if(lk)return;
+  const f=S.fac,n=f.n,b=f.b,m=1+0.25*f.sp,cr=2*(1+0.25*f.tr),free=f.t-f.a[0]-f.a[1]-f.a[2],val=facVal();
+  const maxq=n[3]*m,$=id=>document.getElementById(id);
+  $('facsum').innerHTML=`Einnahmen: <b>${fmt(facRate)} €/s</b> · Auslastung <b>${maxq?Math.round(facRate/(maxq*val)*100):0} %</b> · ${fmt(val)} € pro Paket · Träger: ${f.t} (${free} frei)`;
+  const rate=[`erzeugt ${fmt(2*n[0]*m)} Bohnen/s`,`${fmt(2*n[1]*m)} Bohnen/s → ${fmt(n[1]*m)} Kaffee/s`,`${fmt(2*n[2]*m)} Kaffee/s → ${fmt(n[2]*m)} Pakete/s`,`verkauft ${fmt(n[3]*m)} Pakete/s`];
+  ST.forEach((s,i)=>{
+    $('sn'+i).textContent='×'+n[i];$('sb'+i).textContent=rate[i];
+    const buf=OUT[i]!==null?b[OUT[i]]:b[IN[i]],c=fcap(i);
+    $('sv'+i).style.width=Math.min(100,buf/c*100)+'%';
+    let st='✅ läuft';
+    if(!n[i])st='nicht gebaut';
+    else if(IN[i]!==null&&b[IN[i]]<1)st='⏳ wartet auf '+WAIT[i];
+    else if(OUT[i]!==null&&b[OUT[i]]>=c-1)st='🚧 Ausgang voll, Träger fehlen';
+    $('ss'+i).textContent=`${OUT[i]!==null?'Ausgang':'Eingang'} ${fmt(buf)}/${c} · ${st}`;
+    $('bb'+i).textContent='Bauen · '+fmt(sc(i))+' €';$('bb'+i).disabled=S.m<sc(i);
+  });
+  [['Bohnen','Röster'],['Kaffee','Verpackung'],['Pakete','Verkauf']].forEach((r,i)=>{
+    $('rt'+i).textContent=`${r[0]} → ${r[1]}: ${f.a[i]} Träger (bis ${fmt(f.a[i]*cr)}/s)`;
+  });
+  $('hire').textContent='Träger einstellen · '+fmt(hc())+' €';$('hire').disabled=f.t>=60||S.m<hc();
+  $('spb').textContent=f.sp>=8?'Maschinen-Tempo max.':`Maschinen-Tempo ${f.sp}/8 · ${fmt(spc())} €`;$('spb').disabled=f.sp>=8||S.m<spc();
+  $('trb').textContent=f.tr>=8?'Tragkraft max.':`Tragkraft ${f.tr}/8 · ${fmt(trc())} €`;$('trb').disabled=f.tr>=8||S.m<trc();
 }
 document.getElementById('fac').onclick=e=>{
-  const t=e.target.closest('button');if(!t||level()<5)return;
-  const d=t.dataset,f=S.fac;
-  if(d.sel)facSel=d.sel;
-  else if(d.cell!==undefined){
-    const i=+d.cell,k=f.g[i];
-    if(k){if(confirm('Station abreißen? Du bekommst die Hälfte der Kosten zurück.')){S.m+=Math.floor(stCost(k,-1)/2);f.g[i]=0}}
-    else{const c=stCost(facSel,0);if(S.m>=c){S.m-=c;f.g[i]=facSel;sfx(600)}}
-  }
-  else if(d.act==='hire'){const c=hireCost();if(S.m>=c&&f.w<40){S.m-=c;f.w++;sfx(700)}}
-  else if(d.act==='train'){const c=trainCost();if(f.tr<5&&S.m>=c){S.m-=c;f.tr++;sfx(800)}}
+  const t=e.target.closest('button');if(!t||!t.dataset.act||level()<5)return;
+  const d=t.dataset,f=S.fac,i=+d.i;
+  if(d.act==='build'){const c=sc(i);if(S.m>=c){S.m-=c;f.n[i]++;sfx(600)}}
+  else if(d.act==='dem'){if(f.n[i]>0&&confirm('Station abreißen? Die Hälfte der Kosten kommt zurück.')){S.m+=Math.floor(ST[i].c*Math.pow(1.2,f.n[i]-1)/2);f.n[i]--}}
+  else if(d.act==='asg'){const free=f.t-f.a[0]-f.a[1]-f.a[2];if(+d.d>0&&free>0)f.a[i]++;if(+d.d<0&&f.a[i]>0)f.a[i]--}
+  else if(d.act==='hire'){const c=hc();if(S.m>=c&&f.t<60){S.m-=c;f.t++;sfx(700)}}
+  else if(d.act==='sp'){const c=spc();if(f.sp<8&&S.m>=c){S.m-=c;f.sp++;sfx(800)}}
+  else if(d.act==='tr'){const c=trc();if(f.tr<8&&S.m>=c){S.m-=c;f.tr++;sfx(800)}}
   draw();
 };
 
@@ -412,7 +437,7 @@ document.getElementById('imp').onclick=()=>{
   try{
     const o=JSON.parse(atob(c.trim()));
     if(typeof o.m!=='number'||typeof o.tot!=='number')throw 0;
-    S=Object.assign(S0(),o);S.codes=S.codes||{};S.ach=S.ach||{};
+    S=Object.assign(S0(),o);S.codes=S.codes||{};S.ach=S.ach||{};if(!S.fac||S.fac.v!==2)S.fac=newFac();
     save();draw();alert('Spielstand geladen.');
   }catch(e){alert('Dieser Code ist ungültig.')}
 };
@@ -478,7 +503,7 @@ const CODES={
  'KOSMOS':{t:'Kosmischer Auftrag: 2 Stunden Einnahmen, mindestens 10 Mio. €',f:()=>add(Math.max(1e7,perSec()*7200))},
  'MEGABOOM':{t:'Megaboom: Einnahmen x10 für 30 Sekunden',f:()=>{evtMult=10;evtEnd=Date.now()+3e4}},
  'DANKE':{t:'Danke fürs Spielen: 77.777 €',f:()=>add(77777)},
- 'ARBEITER':{t:'Fünf neue Arbeiter für die Fabrik',f:()=>{S.fac.w=Math.min(40,S.fac.w+5)}}
+ 'ARBEITER':{t:'Fünf neue Träger für die Fabrik',f:()=>{S.fac.t=Math.min(60,S.fac.t+5)}}
 };
 function add(g){S.m+=g;S.tot+=g}
 function gift(id,n){S.own[id]=(S.own[id]||0)+n}
