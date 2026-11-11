@@ -54,6 +54,17 @@ header{grid-column:1/-1;display:flex;justify-content:space-between;align-items:b
 #adm button{border:1px solid var(--line);background:transparent;color:var(--ink);border-radius:8px;padding:7px 10px;font:inherit;cursor:pointer}
 #adm button:focus-visible,#adm input:focus-visible,#rbbtn:focus-visible{outline:3px solid var(--gold);outline-offset:2px}
 #rbbtn{margin-top:8px}
+.ach{display:flex;flex-wrap:wrap;gap:6px}
+.badge{font-size:.82rem;border:1px solid var(--line);border-radius:999px;padding:3px 10px;color:var(--mute)}
+.badge.on{color:var(--ink);border-color:var(--gold)}
+.gb{position:fixed;z-index:20;font-size:2.6rem;background:none;border:0;cursor:pointer;animation:pulse 1s ease-in-out infinite alternate}
+.gb:focus-visible{outline:3px solid var(--gold);border-radius:50%}
+@keyframes pulse{to{transform:scale(1.25)}}
+@media(prefers-reduced-motion:reduce){.gb{animation:none}}
+.fgrid{display:grid;grid-template-columns:repeat(4,1fr);gap:6px;max-width:420px}
+.cell{aspect-ratio:1;border:1px dashed var(--line);border-radius:8px;background:transparent;color:var(--mute);font-size:1.8rem;cursor:pointer}
+.cell.f{border-style:solid;border-color:var(--gold);color:var(--ink)}
+.cell:focus-visible,#fac button:focus-visible{outline:3px solid var(--gold);outline-offset:2px}
 #evt{min-height:1.4em;color:var(--ok);font-size:.95rem}
 .foot{grid-column:1/-1;display:flex;gap:10px;justify-content:space-between;flex-wrap:wrap;color:var(--mute);font-size:.85rem}
 .foot button{background:none;border:1px solid var(--line);color:var(--mute);border-radius:6px;padding:4px 10px;cursor:pointer;font:inherit}
@@ -90,14 +101,26 @@ header{grid-column:1/-1;display:flex;justify-content:space-between;align-items:b
 </section>
 
 <section class="panel" style="grid-column:1/-1">
+  <h2>Fabrik</h2>
+  <div id="fac"></div>
+</section>
+
+<section class="panel" style="grid-column:1/-1">
   <h2>Wiedergeburt</h2>
   <p style="margin:0" id="rbinfo"></p>
   <button class="buy" id="rbbtn" disabled>Wiedergeboren werden</button>
+  <h2 style="margin-top:16px">Wiedergeburts-Shop</h2>
+  <div id="shop"></div>
+</section>
+
+<section class="panel" style="grid-column:1/-1">
+  <h2>Erfolge <span id="achc"></span></h2>
+  <div class="ach" id="ach"></div>
 </section>
 
 <div class="foot">
   <span id="stat"></span>
-  <span><button id="reset">Neu starten</button></span>
+  <span><button id="mute">Ton: an</button> <button id="exp">Export</button> <button id="imp">Import</button> <button id="reset">Neu starten</button></span>
 </div>
 </main>
 <dialog id="adm" aria-label="Adminpanel">
@@ -106,7 +129,7 @@ header{grid-column:1/-1;display:flex;justify-content:space-between;align-items:b
   <div class="g"><button data-a="bld">+10 je Gebäude</button><button data-a="ups">Alle Verbesserungen</button></div>
   <div class="g"><button data-a="rp">+5 Wiedergeburtspunkte</button><button data-a="codes">Codes zurücksetzen</button></div>
   <div class="g"><span class="sub" style="align-self:center">Zeitraffer:</span><button data-a="t1">×1</button><button data-a="t10">×10</button><button data-a="t100">×100</button></div>
-  <div class="g"><button data-a="boom">Boom x5 (60 s)</button><button data-a="close">Schließen</button></div>
+  <div class="g"><button data-a="boom">Boom x5 (60 s)</button><button data-a="gold">Goldene Bohne</button><button data-a="close">Schließen</button></div>
 </dialog>
 
 <script>
@@ -117,7 +140,11 @@ const B=[
  {id:'farm',n:'Kaffeeplantage',ic:'🌱',base:7500,ps:55,d:'Eigener Anbau'},
  {id:'ship',n:'Frachtschiff',ic:'🚢',base:60000,ps:340,d:'Export in alle Welt'},
  {id:'lab',n:'Aroma-Labor',ic:'🧪',base:500000,ps:2200,d:'Neue Sorten entwickeln'},
- {id:'space',n:'Orbital-Plantage',ic:'🛰️',base:6e6,ps:15000,d:'Kaffee ohne Schwerkraft'}
+ {id:'space',n:'Orbital-Plantage',ic:'🛰️',base:6e6,ps:15000,d:'Kaffee ohne Schwerkraft'},
+ {id:'time',n:'Zeitmaschine',ic:'⏳',base:8e7,ps:100000,d:'Gestern schon geröstet'},
+ {id:'mars',n:'Mars-Kolonie',ic:'🪐',base:1e9,ps:700000,d:'Roter Planet, roter Kaffee'},
+ {id:'gal',n:'Galaktische Rösterei',ic:'🌌',base:2e10,ps:5e6,d:'Ein ganzes Sonnensystem voller Aroma'},
+ {id:'multi',n:'Multiversum-Café',ic:'♾️',base:4e11,ps:4e7,d:'Jede Realität serviert Kaffee'}
 ];
 const U=[
  {id:'c1',n:'Bessere Mühle',d:'Klick x2',cost:100,t:'click',m:2},
@@ -128,16 +155,22 @@ const U=[
  {id:'g3',n:'Eigene Marke',d:'Alle Gebäude x2',cost:2e6,t:'all',m:2},
  {id:'k1',n:'Wagen-Flotte',d:'Kaffeewagen x2',cost:600,t:'cart',m:2},
  {id:'k2',n:'Café-Kette',d:'Café x2',cost:5000,t:'cafe',m:2},
- {id:'k3',n:'Industrie-Rösterei',d:'Röstmaschine x2',cost:40000,t:'roast',m:2}
+ {id:'k3',n:'Industrie-Rösterei',d:'Röstmaschine x2',cost:40000,t:'roast',m:2},
+ {id:'k4',n:'Plantagen-Drohnen',d:'Plantage x2',cost:600000,t:'farm',m:2},
+ {id:'c4',n:'Barista-Weltmeister',d:'Klick x10',cost:5e6,t:'click',m:10},
+ {id:'k5',n:'Container-Kapazität',d:'Frachtschiff x2',cost:8e6,t:'ship',m:2},
+ {id:'g4',n:'Weltmarke',d:'Alle Gebäude x3',cost:3e8,t:'all',m:3},
+ {id:'k6',n:'Zeitschleife',d:'Zeitmaschine x2',cost:2e9,t:'time',m:2},
+ {id:'g5',n:'Kosmische Marke',d:'Alle Gebäude x5',cost:5e10,t:'all',m:5}
 ];
-const S0=()=>({m:0,tot:0,own:{},up:{},codes:{},base:0,rp:0,rb:0,clicks:0,t:Date.now()});
+const S0=()=>({m:0,tot:0,own:{},up:{},codes:{},base:0,rp:0,rb:0,ach:{},gb:0,mute:0,pu:{},rps:0,fac:{g:Array(12).fill(0),w:0,tr:0},clicks:0,t:Date.now()});
 let S;
 try{S=JSON.parse(localStorage.getItem('roestwerk'))||S0()}catch(e){S=S0()}
-S.base=S.base||0;S.rp=S.rp||0;S.rb=S.rb||0;
+S.base=S.base||0;S.rp=S.rp||0;S.rb=S.rb||0;S.ach=S.ach||{};S.gb=S.gb||0;S.pu=S.pu||{};S.rps=S.rps||0;S.fac=S.fac||{g:Array(12).fill(0),w:0,tr:0};
 let evtMult=1,evtEnd=0,timeScale=1;
-const rbMult=()=>1+0.1*S.rp;
+const rbMult=()=>(1+0.1*S.rp)*(1+(S.pu.ach?0.04:0.02)*Object.keys(S.ach).length)*(1+facStats().pw/100);
 
-const cost=b=>Math.ceil(b.base*Math.pow(1.15,S.own[b.id]||0));
+const cost=b=>Math.ceil(b.base*Math.pow(1.15,S.own[b.id]||0)*(S.pu.disc?.9:1));
 const fmt=n=>{
   if(n<1e4)return n.toLocaleString('de-DE',{maximumFractionDigits:n<100?1:0});
   const u=['','Tsd.','Mio.','Mrd.','Bio.'];let i=0;
@@ -145,7 +178,7 @@ const fmt=n=>{
   return n.toLocaleString('de-DE',{maximumFractionDigits:2})+' '+u[i];
 };
 function mult(t){let m=1;for(const u of U)if(S.up[u.id]&&u.t===t)m*=u.m;return m}
-const clickVal=()=>1*mult('click')*(1+Math.floor((S.tot)/1e5)*0.1)*rbMult();
+const clickVal=()=>1*mult('click')*(1+Math.floor((S.tot)/1e5)*0.1)*rbMult()*(S.pu.click?3:1);
 function perSec(){
   const all=mult('all');let s=0;
   for(const b of B)s+=(S.own[b.id]||0)*b.ps*mult(b.id)*all;
@@ -156,7 +189,7 @@ function perSec(){
 const bld=document.getElementById('bld'),ups=document.getElementById('ups');
 bld.innerHTML=B.map(b=>`<div class="row"><div class="ic">${b.ic}</div><div class="t"><b>${b.n} <span class="sub" id="o-${b.id}"></span></b><span class="sub">${b.d} · <span id="p-${b.id}"></span> €/s je Stück</span></div><button class="buy" id="b-${b.id}"></button></div>`).join('');
 let qty=1; // 0 = Max
-const costN=(b,n)=>Math.ceil(b.base*Math.pow(1.15,S.own[b.id]||0)*(Math.pow(1.15,n)-1)/0.15);
+const costN=(b,n)=>Math.ceil(b.base*Math.pow(1.15,S.own[b.id]||0)*(Math.pow(1.15,n)-1)/0.15*(S.pu.disc?.9:1));
 function maxN(b){let n=0;while(n<1000&&costN(b,n+1)<=S.m)n++;return n}
 const amount=b=>qty===0?maxN(b):qty;
 document.getElementById('qty').onclick=e=>{
@@ -168,7 +201,7 @@ document.getElementById('qty').onclick=e=>{
 bld.onclick=e=>{
   const btn=e.target.closest('.buy');if(!btn)return;
   const b=B.find(x=>'b-'+x.id===btn.id),n=amount(b);
-  if(n>0&&S.m>=costN(b,n)){S.m-=costN(b,n);S.own[b.id]=(S.own[b.id]||0)+n;draw()}
+  if(n>0&&S.m>=costN(b,n)){S.m-=costN(b,n);S.own[b.id]=(S.own[b.id]||0)+n;sfx(660);draw()}
 };
 const visUps=()=>U.filter(u=>!S.up[u.id]&&(S.tot>=u.cost*0.3)).slice(0,4);
 document.getElementById('buyall').onclick=()=>{
@@ -192,13 +225,13 @@ function draw(){
   document.getElementById('buyall').disabled=!visUps().some(u=>S.m>=u.cost);
   const uh=visUps().map(u=>`<button class="up" id="u-${u.id}" ${S.m<u.cost?'disabled':''}><b>${u.n}</b> – ${fmt(u.cost)} €<small>${u.d}</small></button>`).join('')||'<span class="sub">Verdiene mehr, um neue Verbesserungen freizuschalten.</span>';
   if(uh!==lastUps){lastUps=uh;ups.innerHTML=uh}
-  drawRb();document.getElementById('stat').textContent=`Gesamt verdient: ${fmt(S.tot)} € · Klicks: ${S.clicks}`;
+  drawRb();drawAch();drawFac();document.getElementById('stat').textContent=`Level ${level()} · Gesamt verdient: ${fmt(S.tot)} € · Klicks: ${S.clicks}`;
 }
 
 // Klick
 const rb=document.getElementById('roast');
 rb.addEventListener('click',e=>{
-  const v=clickVal();S.m+=v;S.tot+=v;S.clicks++;
+  const v=clickVal();S.m+=v;S.tot+=v;S.clicks++;sfx(500+Math.random()*100,.04);
   const p=document.createElement('span');p.className='pop';p.textContent='+'+fmt(v);
   const r=rb.getBoundingClientRect();
   p.style.left=((e.clientX||r.left+r.width/2)-r.left-10)+'px';
@@ -227,17 +260,174 @@ setInterval(()=>{
   }
 },30000);
 
+// Sound
+let ac;
+function sfx(f,d=.07){if(S.mute)return;try{ac=ac||new AudioContext();const o=ac.createOscillator(),g=ac.createGain();o.type='triangle';o.frequency.value=f;g.gain.value=.05;o.connect(g);g.connect(ac.destination);o.start();g.gain.exponentialRampToValueAtTime(.001,ac.currentTime+d);o.stop(ac.currentTime+d)}catch(e){}}
+const mb=document.getElementById('mute');
+mb.textContent='Ton: '+(S.mute?'aus':'an');
+mb.onclick=()=>{S.mute=S.mute?0:1;mb.textContent='Ton: '+(S.mute?'aus':'an');save()};
+
+// Erfolge
+const A=[
+ ['first','Erster Aufguss',()=>S.clicks>=1],
+ ['cl100','Fleißige Hände (100 Klicks)',()=>S.clicks>=100],
+ ['cl1k','Klickmaschine (1.000 Klicks)',()=>S.clicks>=1000],
+ ['t1e4','Kleingewerbe (10.000 € verdient)',()=>S.tot>=1e4],
+ ['t1e6','Millionär (1 Mio. €)',()=>S.tot>=1e6],
+ ['t1e9','Milliardär (1 Mrd. €)',()=>S.tot>=1e9],
+ ['cart10','Fuhrpark (10 Kaffeewagen)',()=>(S.own.cart||0)>=10],
+ ['cafe25','Café-Kette (25 Cafés)',()=>(S.own.cafe||0)>=25],
+ ['b100','Imperium (100 Gebäude)',()=>B.reduce((a,b)=>a+(S.own[b.id]||0),0)>=100],
+ ['up5','Tüftler (5 Verbesserungen)',()=>Object.keys(S.up).length>=5],
+ ['gb5','Sternenfänger (5 goldene Bohnen)',()=>S.gb>=5],
+ ['rb1','Neuanfang (1. Wiedergeburt)',()=>S.rb>=1],
+ ['rb5','Reinkarnations-Profi (5 Wiedergeburten)',()=>S.rb>=5],
+ ['mars','Interplanetar (Mars-Kolonie)',()=>(S.own.mars||0)>=1],
+ ['rb10','Seelenwanderer (10 Wiedergeburten)',()=>S.rb>=10],
+ ['shop3','Stammkunde im Shop (3 Shop-Upgrades)',()=>Object.keys(S.pu).length>=3],
+ ['t1e12','Billionär (1 Bio. €)',()=>S.tot>=1e12],
+ ['fac','Fabrikant (erste Station gebaut)',()=>S.fac.g.some(x=>x)],
+ ['fac2','Vollauslastung (12 Stationen, alle besetzt)',()=>S.fac.g.every(x=>x)&&facStats().st>=1]
+];
+let lastAch='';
+function drawAch(){
+  for(const [id,n,f] of A)if(!S.ach[id]&&f()){
+    S.ach[id]=1;sfx(990,.3);
+    const el=document.getElementById('evt');el.textContent='Erfolg: '+n+' (Bonus!)';setTimeout(()=>el.textContent='',7000);
+  }
+  const c=Object.keys(S.ach).length;
+  const h=A.map(([id,n])=>`<span class="badge${S.ach[id]?' on':''}">${S.ach[id]?'🏆':'🔒'} ${n}</span>`).join('');
+  if(h!==lastAch){lastAch=h;document.getElementById('ach').innerHTML=h}
+  document.getElementById('achc').textContent=`(${c}/${A.length} · +${Math.round(c*(S.pu.ach?4:2))} % auf alles)`;
+}
+
+// Goldene Bohne
+function spawnBean(){
+  if(document.querySelector('.gb'))return;
+  const b=document.createElement('button');
+  b.className='gb';b.textContent='🌟';b.setAttribute('aria-label','Goldene Bohne einsammeln');
+  b.style.left=(8+Math.random()*80)+'vw';b.style.top=(15+Math.random()*65)+'vh';
+  b.onclick=()=>{
+    S.gb++;sfx(880,.25);
+    const el=document.getElementById('evt');
+    if(Math.random()<.5){const g=Math.max(100,perSec()*90,clickVal()*30);add(g);el.textContent='Goldene Bohne: +'+fmt(g)+' €!'}
+    else{evtMult=7;evtEnd=Date.now()+2e4;el.textContent='Goldene Bohne: Einnahmen x7 für 20 Sekunden!'}
+    setTimeout(()=>el.textContent='',7000);
+    b.remove();draw();
+  };
+  document.body.appendChild(b);setTimeout(()=>b.remove(),12000);
+}
+(function beanLoop(){setTimeout(()=>{if(!document.hidden&&S.tot>20)spawnBean();beanLoop()},(S.pu.gold?.5:1)*(45000+Math.random()*60000))})();
+
+// Fabrik (ab Level 5 = 100.000 € Gesamteinnahmen)
+function level(){return Math.floor(Math.log10(Math.max(1,S.tot)))}
+const FS={
+ roast:{n:'Röstlinie',ic:'⚙️',c:5e4,p:10,r:2},
+ pack:{n:'Verpackung',ic:'📦',c:8e4,p:7,r:2},
+ store:{n:'Lager',ic:'🏬',c:3e4,p:5,r:1},
+ lab:{n:'Labor',ic:'🧪',c:3e5,p:14,r:3}
+};
+let facSel='roast',lastFac='';
+const cnt=k=>S.fac.g.filter(x=>x===k).length;
+const stCost=(k,o)=>Math.ceil(FS[k].c*Math.pow(1.2,cnt(k)+o));
+const hireCost=()=>Math.ceil(2000*Math.pow(1.12,S.fac.w));
+const trainCost=()=>Math.ceil(2e5*Math.pow(3,S.fac.tr));
+function facStats(){
+  const g=S.fac.g;let pw=0,req=0;
+  g.forEach((k,i)=>{
+    if(!k)return;const f=FS[k];req+=f.r;
+    const x=i%4,y=Math.floor(i/4),t=new Set();
+    [[x-1,y],[x+1,y],[x,y-1],[x,y+1]].forEach(([a,b])=>{if(a<0||a>3||b<0||b>2)return;const o=g[b*4+a];if(o&&o!==k)t.add(o)});
+    pw+=f.p*(1+0.15*t.size);
+  });
+  const st=req?Math.min(1,S.fac.w/req):0,eff=st*(1+0.1*S.fac.tr);
+  return {pw:pw*eff,req,st,eff};
+}
+function drawFac(){
+  let h;
+  if(level()<5)h=`<p class="sub" style="margin:0">Die Fabrik wird ab Level 5 freigeschaltet (100.000 € Gesamteinnahmen). Dein Level: ${level()}.</p>`;
+  else{
+    const st=facStats(),f=S.fac;
+    h=`<p style="margin:0 0 8px">Arbeiter: <b>${f.w}</b> von ${st.req} nötig · Besetzung ${Math.round(st.st*100)} % · Schulung ${f.tr}/5 · Effizienz <b>${Math.round(st.eff*100)} %</b><br>Leistung ${fmt(st.pw)} → <b>+${fmt(st.pw)} %</b> auf alle Einnahmen und Klicks</p>
+<div class="qty" role="group" aria-label="Station wählen" style="flex-wrap:wrap">${Object.keys(FS).map(k=>`<button data-sel="${k}" aria-pressed="${facSel===k}">${FS[k].ic} ${FS[k].n} · ${fmt(stCost(k,0))} €</button>`).join('')}</div>
+<div class="fgrid">${f.g.map((k,i)=>`<button class="cell${k?' f':''}" data-cell="${i}" aria-label="${k?FS[k].n+' abreißen':'Leerer Bauplatz'}">${k?FS[k].ic:'+'}</button>`).join('')}</div>
+<div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:10px"><button class="buy" data-act="hire" ${f.w>=40||S.m<hireCost()?'disabled':''}>Arbeiter einstellen · ${fmt(hireCost())} €</button><button class="buy" data-act="train" ${f.tr>=5||S.m<trainCost()?'disabled':''}>${f.tr>=5?'Schulung max.':'Schulung · '+fmt(trainCost())+' €'}</button></div>
+<p class="sub">Tipp: Verschiedene Stationen nebeneinander geben +15 % Leistung je Nachbartyp. Arbeiter pro Station: Röstlinie 2, Verpackung 2, Lager 1, Labor 3. Zu wenig Arbeiter senken die Effizienz.</p>`;
+  }
+  if(h!==lastFac){lastFac=h;document.getElementById('fac').innerHTML=h}
+}
+document.getElementById('fac').onclick=e=>{
+  const t=e.target.closest('button');if(!t||level()<5)return;
+  const d=t.dataset,f=S.fac;
+  if(d.sel)facSel=d.sel;
+  else if(d.cell!==undefined){
+    const i=+d.cell,k=f.g[i];
+    if(k){if(confirm('Station abreißen? Du bekommst die Hälfte der Kosten zurück.')){S.m+=Math.floor(stCost(k,-1)/2);f.g[i]=0}}
+    else{const c=stCost(facSel,0);if(S.m>=c){S.m-=c;f.g[i]=facSel;sfx(600)}}
+  }
+  else if(d.act==='hire'){const c=hireCost();if(S.m>=c&&f.w<40){S.m-=c;f.w++;sfx(700)}}
+  else if(d.act==='train'){const c=trainCost();if(f.tr<5&&S.m>=c){S.m-=c;f.tr++;sfx(800)}}
+  draw();
+};
+
+// Wiedergeburts-Shop (einmalige Käufe mit freien Punkten)
+const PU=[
+ ['start','Startkapital','Nach jeder Wiedergeburt 5.000 € Startgeld',2],
+ ['wagen','Wagenpark','Nach jeder Wiedergeburt 10 Kaffeewagen',3],
+ ['off','Zeitgeist','Offline-Einnahmen zu 100 % statt 50 %',4],
+ ['click','Klick-Meister','Klicks dauerhaft x3',5],
+ ['disc','Großhändler','Alle Gebäude 10 % günstiger',6],
+ ['gold','Goldregen','Goldene Bohnen erscheinen doppelt so oft',8],
+ ['mgr','Manager','Kauft alle 5 Sekunden automatisch das effizienteste Gebäude',10],
+ ['ach','Trophäensammler','Erfolge geben +4 % statt +2 %',12],
+ ['rbp','Seelenfunke','+25 % Wiedergeburtspunkte',15]
+];
+let lastShop='';
+function drawShop(){
+  const free=S.rp-S.rps;
+  const h=PU.map(([id,n,d,c])=>S.pu[id]
+    ?`<div class="row"><div class="t"><b>${n} ✔</b><span class="sub">${d}</span></div></div>`
+    :`<div class="row"><div class="t"><b>${n}</b><span class="sub">${d}</span></div><button class="buy" data-id="${id}" ${free<c?'disabled':''}>${c} Punkte</button></div>`).join('');
+  if(h!==lastShop){lastShop=h;document.getElementById('shop').innerHTML=h}
+}
+document.getElementById('shop').onclick=e=>{
+  const id=e.target.closest('button')?.dataset.id;if(!id)return;
+  const p=PU.find(x=>x[0]===id);
+  if(p&&!S.pu[id]&&S.rp-S.rps>=p[3]){S.rps+=p[3];S.pu[id]=1;sfx(800,.2);draw()}
+};
+setInterval(()=>{
+  if(!S.pu.mgr)return;
+  const b=B.reduce((a,x)=>x.ps/cost(x)>a.ps/cost(a)?x:a);
+  if(S.m>=cost(b)){S.m-=cost(b);gift(b.id,1);draw()}
+},5000);
+
+// Export / Import
+document.getElementById('exp').onclick=()=>{
+  save();const c=btoa(JSON.stringify(S));
+  if(navigator.clipboard)navigator.clipboard.writeText(c).catch(()=>{});
+  prompt('Dein Spielstand-Code (zum Kopieren):',c);
+};
+document.getElementById('imp').onclick=()=>{
+  const c=prompt('Spielstand-Code einfügen:');if(!c)return;
+  try{
+    const o=JSON.parse(atob(c.trim()));
+    if(typeof o.m!=='number'||typeof o.tot!=='number')throw 0;
+    S=Object.assign(S0(),o);S.codes=S.codes||{};S.ach=S.ach||{};
+    save();draw();alert('Spielstand geladen.');
+  }catch(e){alert('Dieser Code ist ungültig.')}
+};
+
 // Wiedergeburt
-const rbGain=()=>Math.floor(Math.sqrt(Math.max(0,S.tot-S.base)/1e6));
+const rbGain=()=>Math.floor(Math.sqrt(Math.max(0,S.tot-S.base)/1e6)*(S.pu.rbp?1.25:1));
 function drawRb(){
   const g=rbGain();
-  document.getElementById('rbinfo').textContent=`Wiedergeburten: ${S.rb} · Punkte: ${S.rp} (+${S.rp*10} % auf Einnahmen und Klicks). `+(g>=1?`Jetzt wiedergeboren: +${g} Punkte.`:'Ab 1 Mio. € in diesem Durchgang möglich. Dabei werden Geld, Gebäude und Verbesserungen zurückgesetzt, Punkte und Codes bleiben.');
-  document.getElementById('rbbtn').disabled=g<1;
+  document.getElementById('rbinfo').textContent=`Wiedergeburten: ${S.rb} · Punkte: ${S.rp-S.rps} frei von ${S.rp} (+${S.rp*10} % auf Einnahmen und Klicks). `+(g>=1?`Jetzt wiedergeboren: +${g} Punkte.`:'Ab 1 Mio. € in diesem Durchgang möglich. Dabei werden Geld, Gebäude und Verbesserungen zurückgesetzt, Punkte, Codes und deine Fabrik bleiben.');
+  document.getElementById('rbbtn').disabled=g<1;drawShop();
 }
 document.getElementById('rbbtn').onclick=()=>{
   const g=rbGain();if(g<1)return;
   if(!confirm(`Wiedergeboren werden? Du erhältst ${g} Punkte, Geld, Gebäude und Verbesserungen werden zurückgesetzt.`))return;
-  S.rp+=g;S.rb++;S.m=0;S.own={};S.up={};S.base=S.tot;evtEnd=0;save();draw();
+  S.rp+=g;S.rb++;S.m=0;S.own={};S.up={};S.base=S.tot;evtEnd=0;if(S.pu.start)S.m=5000;if(S.pu.wagen)S.own.cart=10;save();draw();
 };
 
 // Adminpanel (Passwort-Hash; zum Ändern: SHA-256 des neuen Passworts eintragen)
@@ -260,6 +450,7 @@ document.getElementById('adm').addEventListener('click',e=>{
   if(a==='rp')S.rp+=5;
   if(a==='codes')S.codes={};
   if(a==='boom'){evtMult=5;evtEnd=Date.now()+6e4}
+  if(a==='gold')spawnBean();
   if(a[0]==='t')timeScale=+a.slice(1);
   draw();
 });
@@ -281,7 +472,13 @@ const CODES={
  'PLANTAGE':{t:'Geschenkt: 1 Kaffeeplantage',f:()=>gift('farm',1)},
  'MILLION':{t:'Investor steigt ein: 250.000 €',f:()=>add(250000)},
  'WELTKAFFEE':{t:'Weltmarkt: 3 Stunden Einnahmen, mindestens 100.000 €',f:()=>add(Math.max(1e5,perSec()*10800))},
- 'REBIRTH':{t:'Ein Wiedergeburtspunkt (+10 % auf alles)',f:()=>{S.rp++}}
+ 'REBIRTH':{t:'Ein Wiedergeburtspunkt (+10 % auf alles)',f:()=>{S.rp++}},
+ 'GOLD':{t:'Eine goldene Bohne erscheint!',f:()=>spawnBean()},
+ 'SEELE':{t:'Drei Wiedergeburtspunkte',f:()=>{S.rp+=3}},
+ 'KOSMOS':{t:'Kosmischer Auftrag: 2 Stunden Einnahmen, mindestens 10 Mio. €',f:()=>add(Math.max(1e7,perSec()*7200))},
+ 'MEGABOOM':{t:'Megaboom: Einnahmen x10 für 30 Sekunden',f:()=>{evtMult=10;evtEnd=Date.now()+3e4}},
+ 'DANKE':{t:'Danke fürs Spielen: 77.777 €',f:()=>add(77777)},
+ 'ARBEITER':{t:'Fünf neue Arbeiter für die Fabrik',f:()=>{S.fac.w=Math.min(40,S.fac.w+5)}}
 };
 function add(g){S.m+=g;S.tot+=g}
 function gift(id,n){S.own[id]=(S.own[id]||0)+n}
@@ -304,7 +501,7 @@ function save(){S.t=Date.now();try{localStorage.setItem('roestwerk',JSON.stringi
 setInterval(save,5000);addEventListener('beforeunload',save);
 const away=Math.min((Date.now()-(S.t||Date.now()))/1000,8*3600);
 if(away>60&&perSec()>0){
-  const g=perSec()*away*0.5;S.m+=g;S.tot+=g;
+  const g=perSec()*away*(S.pu.off?1:0.5);S.m+=g;S.tot+=g;
   document.getElementById('evt').textContent=`Willkommen zurück! Während deiner Abwesenheit hast du ${fmt(g)} € verdient.`;
 }
 document.getElementById('reset').onclick=()=>{if(confirm('Spielstand wirklich löschen?')){S=S0();save();draw()}};
