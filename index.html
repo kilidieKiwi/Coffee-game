@@ -67,6 +67,7 @@ header{grid-column:1/-1;display:flex;justify-content:space-between;align-items:b
 .cell:focus-visible,#fac button:focus-visible{outline:3px solid var(--gold);outline-offset:2px}
 .bar{height:8px;background:var(--line);border-radius:4px;overflow:hidden;margin:4px 0}
 .bar i{display:block;height:100%;background:var(--gold);width:0}
+#fc{display:block;width:100%;max-width:480px;aspect-ratio:3/2;border:1px solid var(--line);border-radius:8px;cursor:crosshair;touch-action:manipulation;margin-top:8px}
 #evt{min-height:1.4em;color:var(--ok);font-size:.95rem}
 .foot{grid-column:1/-1;display:flex;gap:10px;justify-content:space-between;flex-wrap:wrap;color:var(--mute);font-size:.85rem}
 .foot button{background:none;border:1px solid var(--line);color:var(--mute);border-radius:6px;padding:4px 10px;cursor:pointer;font:inherit}
@@ -107,10 +108,13 @@ header{grid-column:1/-1;display:flex;justify-content:space-between;align-items:b
   <div id="fac">
   <p class="sub" id="facl" style="margin:0"></p>
   <div id="facb" hidden>
-    <p id="facsum" style="margin:0 0 10px"></p>
-    <div id="stg"></div>
+    <p id="facsum" style="margin:0 0 8px"></p>
+    <div class="qty" id="tools" role="group" aria-label="Werkzeug" style="flex-wrap:wrap"></div>
+    <canvas id="fc" width="480" height="320" aria-label="Fabrikgrundriss von oben"></canvas>
+    <p class="sub" id="fhint" style="margin:6px 0"></p>
+    <div id="rts"></div>
     <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:10px"><button class="buy" id="hire" data-act="hire"></button><button class="buy" id="spb" data-act="sp"></button><button class="buy" id="trb" data-act="tr"></button></div>
-    <p class="sub">Die Linie: Pflanzung → Röster → Verpackung → Verkauf. Statt Förderbändern tragen deine Arbeiter die Waren zwischen den Stationen. Verteile sie mit + und − auf die drei Wege. Richtwert für 1 Verkauf: 1 Verpackung, 2 Röster, 2 Pflanzungen, dazu 2 Träger für Bohnen und je 1 für Kaffee und Pakete. Der größte Engpass bestimmt den Gewinn.</p>
+    <p class="sub">Kette: 🌱 Pflanzung → ⚙️ Röster → 📦 Verpackung → 🏬 Verkauf. Baue die Stationen selbst auf das Feld und ziehe mit dem Werkzeug „Route" Wege von einer Station zur nächsten Stufe. Träger laufen dort hin und her. Je kürzer der Weg und je mehr Träger, desto mehr Ware kommt an. Richtwert: 2 Pflanzungen, 2 Röster, 1 Verpackung, 1 Verkauf.</p>
   </div>
 </div>
 </section>
@@ -176,7 +180,7 @@ const U=[
 const S0=()=>({m:0,tot:0,own:{},up:{},codes:{},base:0,rp:0,rb:0,ach:{},gb:0,mute:0,pu:{},rps:0,fac:newFac(),clicks:0,t:Date.now()});
 let S;
 try{S=JSON.parse(localStorage.getItem('roestwerk'))||S0()}catch(e){S=S0()}
-S.base=S.base||0;S.rp=S.rp||0;S.rb=S.rb||0;S.ach=S.ach||{};S.gb=S.gb||0;S.pu=S.pu||{};S.rps=S.rps||0;if(!S.fac||S.fac.v!==2)S.fac=newFac();
+S.base=S.base||0;S.rp=S.rp||0;S.rb=S.rb||0;S.ach=S.ach||{};S.gb=S.gb||0;S.pu=S.pu||{};S.rps=S.rps||0;if(!S.fac||S.fac.v!==3){const o=S.fac;S.fac=newFac();if(o&&o.v===2){S.fac.t=o.t;S.fac.sp=o.sp;S.fac.tr=o.tr;S.m+=o.n.reduce((a,x,i)=>a+x*[4e4,6e4,9e4,5e4][i],0)}}
 let evtMult=1,evtEnd=0,timeScale=1;
 const rbMult=()=>(1+0.1*S.rp)*(1+(S.pu.ach?0.04:0.02)*Object.keys(S.ach).length);
 
@@ -296,8 +300,8 @@ const A=[
  ['rb10','Seelenwanderer (10 Wiedergeburten)',()=>S.rb>=10],
  ['shop3','Stammkunde im Shop (3 Shop-Upgrades)',()=>Object.keys(S.pu).length>=3],
  ['t1e12','Billionär (1 Bio. €)',()=>S.tot>=1e12],
- ['fac','Fabrikant (erste Station gebaut)',()=>S.fac.n.some(x=>x>0)],
- ['fac2','Produktionslinie (alle 4 Stationen gebaut, Träger auf jedem Weg)',()=>S.fac.n.every(x=>x>0)&&S.fac.a.every(x=>x>0)]
+ ['fac','Fabrikant (erste Station gebaut)',()=>S.fac.m.length>0],
+ ['fac2','Produktionslinie (alle 4 Stationstypen gebaut, Träger unterwegs)',()=>[0,1,2,3].every(k=>S.fac.m.some(x=>x.t===k))&&S.fac.r.some(x=>x.w>0)]
 ];
 let lastAch='';
 function drawAch(){
@@ -329,71 +333,132 @@ function spawnBean(){
 }
 (function beanLoop(){setTimeout(()=>{if(!document.hidden&&S.tot>20)spawnBean();beanLoop()},(S.pu.gold?.5:1)*(45000+Math.random()*60000))})();
 
-// Fabrik (ab Level 5 = 100.000 € Gesamteinnahmen): Produktionskette mit Trägern statt Förderbändern
+// Fabrik (ab Level 5): Top-down-Raster, Stationen platzieren, Trägerrouten einrichten
 function level(){return Math.floor(Math.log10(Math.max(1,S.tot)))}
-function newFac(){return {v:2,n:[0,0,0,0],t:0,a:[0,0,0],sp:0,tr:0,b:[0,0,0,0,0,0]}}
-const ST=[
- {n:'Pflanzung',ic:'🌱',c:4e4},{n:'Röster',ic:'⚙️',c:6e4},{n:'Verpackung',ic:'📦',c:9e4},{n:'Verkauf',ic:'🏬',c:5e4}
-];
-const IN=[null,1,3,5],OUT=[0,2,4,null],WAIT=['','Bohnen','Kaffee','Pakete'];
-let facRate=0;
-const sc=i=>Math.ceil(ST[i].c*Math.pow(1.2,S.fac.n[i]));
+function newFac(){return {v:3,m:[],r:[],nid:1,t:0,sp:0,tr:0}}
+const ST=[{n:'Pflanzung',ic:'🌱',c:4e4},{n:'Röster',ic:'⚙️',c:6e4},{n:'Verpackung',ic:'📦',c:9e4},{n:'Verkauf',ic:'🏬',c:5e4}];
+const GW=12,GH=8,CS=40,FC=20;
+let facRate=0,tool='0',rsel=null,lastRts='';
+const cnt=k=>S.fac.m.filter(a=>a.t===k).length;
+const sc=k=>Math.ceil(ST[k].c*Math.pow(1.2,cnt(k)));
 const hc=()=>Math.ceil(2000*Math.pow(1.12,S.fac.t));
 const spc=()=>Math.ceil(3e5*Math.pow(2.5,S.fac.sp));
 const trc=()=>Math.ceil(2e5*Math.pow(2.5,S.fac.tr));
 const facVal=()=>2*Math.pow(10,level()-3)*rbMult();
-const fcap=i=>20*Math.max(1,S.fac.n[i]);
+const fcap=()=>2*(1+0.25*S.fac.tr);
+const byId=()=>{const o={};S.fac.m.forEach(a=>o[a.id]=a);return o};
+const rdist=(q,by)=>Math.abs(by[q.d].x-by[q.s].x)+Math.abs(by[q.d].y-by[q.s].y);
+const rT=(q,by)=>2*rdist(q,by)/3+1;
 function facTick(dt){
   if(level()<5||dt<=0)return;
-  const f=S.fac,n=f.n,b=f.b,m=1+0.25*f.sp,cr=2*(1+0.25*f.tr);
-  b[0]=Math.min(fcap(0),b[0]+2*n[0]*m*dt);
-  let x=Math.min(2*n[1]*m*dt,b[1],(fcap(1)-b[2])*2);if(x>0){b[1]-=x;b[2]+=x/2}
-  x=Math.min(2*n[2]*m*dt,b[3],(fcap(2)-b[4])*2);if(x>0){b[3]-=x;b[4]+=x/2}
-  const q=Math.max(0,Math.min(n[3]*m*dt,b[5]));b[5]-=q;
-  const earn=q*facVal();if(earn>0)add(earn);
+  const f=S.fac,mm=1+0.25*f.sp,by=byId();let earn=0;
+  for(const a of f.m){
+    if(a.t===0)a.o=Math.min(FC,a.o+2*mm*dt);
+    else if(a.t<3){const x=Math.min(2*mm*dt,a.i,(FC-a.o)*2);if(x>0){a.i-=x;a.o+=x/2}}
+    else{const q=Math.min(mm*dt,a.i);if(q>0){a.i-=q;earn+=q*facVal()}}
+  }
+  if(earn>0)add(earn);
   facRate+=(earn/dt-facRate)*Math.min(1,dt*2);
-  [[0,1,1],[2,3,2],[4,5,3]].forEach(([s0,d0,ds],i)=>{
-    const y=Math.min(f.a[i]*cr*dt,b[s0],fcap(ds)-b[d0]);if(y>0){b[s0]-=y;b[d0]+=y}
-  });
+  for(const q of f.r){
+    const a=by[q.s],b=by[q.d];if(!a||!b||q.w<1)continue;
+    const y=Math.min(q.w*fcap()/rT(q,by)*dt,a.o,FC-b.i);if(y>0){a.o-=y;b.i+=y}
+  }
 }
-document.getElementById('stg').innerHTML=ST.map((s,i)=>`<div class="row"><div class="ic">${s.ic}</div><div class="t"><b>${s.n} <span id="sn${i}"></span></b><span class="sub" id="sb${i}"></span><div class="bar"><i id="sv${i}"></i></div><span class="sub" id="ss${i}"></span></div><div style="display:flex;flex-direction:column;gap:4px"><button class="buy" data-act="build" data-i="${i}" id="bb${i}"></button><button class="buy" style="background:transparent;color:var(--ink);border:1px solid var(--line)" data-act="dem" data-i="${i}">Abreißen</button></div></div>`+(i<3?`<div class="row" style="padding-left:2rem"><span>👷</span><span class="t sub" id="rt${i}"></span><button class="buy" data-act="asg" data-i="${i}" data-d="-1" style="min-width:44px" aria-label="Träger abziehen">−</button><button class="buy" data-act="asg" data-i="${i}" data-d="1" style="min-width:44px" aria-label="Träger hinzufügen">+</button></div>`:'')).join('');
+const sv=(el,t)=>{if(el.textContent!==t)el.textContent=t};
+const $=id=>document.getElementById(id);
+$('tools').innerHTML=ST.map((s,i)=>`<button data-tool="${i}"></button>`).join('')+'<button data-tool="r">↔ Route</button><button data-tool="x">🗑 Abreißen</button>';
+$('fc').onclick=e=>{
+  if(level()<5)return;
+  const r=$('fc').getBoundingClientRect(),cx=Math.floor((e.clientX-r.left)/r.width*GW),cy=Math.floor((e.clientY-r.top)/r.height*GH);
+  const f=S.fac,M=f.m.find(a=>a.x===cx&&a.y===cy);
+  if(tool==='x'){
+    if(M&&confirm('Station abreißen? Die Hälfte der Kosten kommt zurück.')){
+      S.m+=Math.floor(ST[M.t].c*Math.pow(1.2,cnt(M.t)-1)/2);
+      f.m=f.m.filter(a=>a!==M);f.r=f.r.filter(q=>q.s!==M.id&&q.d!==M.id);
+    }
+  }else if(tool==='r'){
+    if(!M)rsel=null;
+    else if(rsel===null)rsel=M.id;
+    else{
+      const A=f.m.find(a=>a.id===rsel);
+      if(A&&M.t===A.t+1&&!f.r.some(q=>q.s===rsel&&q.d===M.id)){f.r.push({s:rsel,d:M.id,w:0});sfx(700);rsel=null}
+      else rsel=M.id;
+    }
+  }else if(!M){
+    const k=+tool,c=sc(k);
+    if(S.m>=c){S.m-=c;f.m.push({id:f.nid++,t:k,x:cx,y:cy,i:0,o:0});sfx(600)}
+  }
+  draw();
+};
 function drawFac(){
   const lk=level()<5;
-  document.getElementById('facl').textContent=lk?`Die Fabrik wird ab Level 5 freigeschaltet (100.000 € Gesamteinnahmen). Dein Level: ${level()}.`:'';
-  document.getElementById('facb').hidden=lk;if(lk)return;
-  const f=S.fac,n=f.n,b=f.b,m=1+0.25*f.sp,cr=2*(1+0.25*f.tr),free=f.t-f.a[0]-f.a[1]-f.a[2],val=facVal();
-  const maxq=n[3]*m,$=id=>document.getElementById(id);
+  sv($('facl'),lk?`Die Fabrik wird ab Level 5 freigeschaltet (100.000 € Gesamteinnahmen). Dein Level: ${level()}.`:'');
+  $('facb').hidden=lk;if(lk)return;
+  const f=S.fac,by=byId(),mm=1+0.25*f.sp,free=f.t-f.r.reduce((a,x)=>a+x.w,0),val=facVal(),maxq=cnt(3)*mm;
   $('facsum').innerHTML=`Einnahmen: <b>${fmt(facRate)} €/s</b> · Auslastung <b>${maxq?Math.round(facRate/(maxq*val)*100):0} %</b> · ${fmt(val)} € pro Paket · Träger: ${f.t} (${free} frei)`;
-  const rate=[`erzeugt ${fmt(2*n[0]*m)} Bohnen/s`,`${fmt(2*n[1]*m)} Bohnen/s → ${fmt(n[1]*m)} Kaffee/s`,`${fmt(2*n[2]*m)} Kaffee/s → ${fmt(n[2]*m)} Pakete/s`,`verkauft ${fmt(n[3]*m)} Pakete/s`];
-  ST.forEach((s,i)=>{
-    $('sn'+i).textContent='×'+n[i];$('sb'+i).textContent=rate[i];
-    const buf=OUT[i]!==null?b[OUT[i]]:b[IN[i]],c=fcap(i);
-    $('sv'+i).style.width=Math.min(100,buf/c*100)+'%';
-    let st='✅ läuft';
-    if(!n[i])st='nicht gebaut';
-    else if(IN[i]!==null&&b[IN[i]]<1)st='⏳ wartet auf '+WAIT[i];
-    else if(OUT[i]!==null&&b[OUT[i]]>=c-1)st='🚧 Ausgang voll, Träger fehlen';
-    $('ss'+i).textContent=`${OUT[i]!==null?'Ausgang':'Eingang'} ${fmt(buf)}/${c} · ${st}`;
-    $('bb'+i).textContent='Bauen · '+fmt(sc(i))+' €';$('bb'+i).disabled=S.m<sc(i);
+  document.querySelectorAll('#tools button').forEach(b=>{
+    const k=b.dataset.tool;if(k!=='r'&&k!=='x')sv(b,`${ST[k].ic} ${ST[k].n} · ${fmt(sc(+k))} €`);
+    b.setAttribute('aria-pressed',String(tool===k));
   });
-  [['Bohnen','Röster'],['Kaffee','Verpackung'],['Pakete','Verkauf']].forEach((r,i)=>{
-    $('rt'+i).textContent=`${r[0]} → ${r[1]}: ${f.a[i]} Träger (bis ${fmt(f.a[i]*cr)}/s)`;
-  });
-  $('hire').textContent='Träger einstellen · '+fmt(hc())+' €';$('hire').disabled=f.t>=60||S.m<hc();
-  $('spb').textContent=f.sp>=8?'Maschinen-Tempo max.':`Maschinen-Tempo ${f.sp}/8 · ${fmt(spc())} €`;$('spb').disabled=f.sp>=8||S.m<spc();
-  $('trb').textContent=f.tr>=8?'Tragkraft max.':`Tragkraft ${f.tr}/8 · ${fmt(trc())} €`;$('trb').disabled=f.tr>=8||S.m<trc();
+  sv($('fhint'),tool==='x'?'Klicke eine Station an, um sie abzureißen.':tool==='r'?(rsel?'Jetzt die Zielstation der nächsten Stufe anklicken.':'Erst die Quellstation anklicken, dann die Zielstation der nächsten Stufe.'):'Klicke auf ein leeres Feld, um zu bauen.');
+  const h=f.r.map((q,i)=>{
+    const a=by[q.s],b=by[q.d],d=rdist(q,by);
+    return `<div class="row"><div class="t"><b>${ST[a.t].ic}#${a.id} → ${ST[b.t].ic}#${b.id}</b><span class="sub">Weg ${d} Felder · ${q.w} Träger · bis ${fmt(q.w*fcap()/rT(q,by))}/s</span></div><button class="buy" style="min-width:44px" data-act="asg" data-i="${i}" data-d="-1" aria-label="Träger abziehen">−</button><button class="buy" style="min-width:44px" data-act="asg" data-i="${i}" data-d="1" aria-label="Träger hinzufügen">+</button><button class="buy" style="min-width:44px;background:transparent;color:var(--ink);border:1px solid var(--line)" data-act="del" data-i="${i}" aria-label="Route löschen">🗑</button></div>`;
+  }).join('')||'<span class="sub">Noch keine Routen. Wähle „Route" und verbinde zwei Stationen.</span>';
+  if(h!==lastRts){lastRts=h;$('rts').innerHTML=h}
+  sv($('hire'),'Träger einstellen · '+fmt(hc())+' €');$('hire').disabled=f.t>=60||S.m<hc();
+  sv($('spb'),f.sp>=8?'Maschinen-Tempo max.':`Maschinen-Tempo ${f.sp}/8 · ${fmt(spc())} €`);$('spb').disabled=f.sp>=8||S.m<spc();
+  sv($('trb'),f.tr>=8?'Tragkraft max.':`Tragkraft ${f.tr}/8 · ${fmt(trc())} €`);$('trb').disabled=f.tr>=8||S.m<trc();
 }
-document.getElementById('fac').onclick=e=>{
-  const t=e.target.closest('button');if(!t||!t.dataset.act||level()<5)return;
-  const d=t.dataset,f=S.fac,i=+d.i;
-  if(d.act==='build'){const c=sc(i);if(S.m>=c){S.m-=c;f.n[i]++;sfx(600)}}
-  else if(d.act==='dem'){if(f.n[i]>0&&confirm('Station abreißen? Die Hälfte der Kosten kommt zurück.')){S.m+=Math.floor(ST[i].c*Math.pow(1.2,f.n[i]-1)/2);f.n[i]--}}
-  else if(d.act==='asg'){const free=f.t-f.a[0]-f.a[1]-f.a[2];if(+d.d>0&&free>0)f.a[i]++;if(+d.d<0&&f.a[i]>0)f.a[i]--}
+$('fac').onclick=e=>{
+  const t=e.target.closest('button');if(!t||level()<5)return;
+  const d=t.dataset,f=S.fac;
+  if(d.tool!==undefined){tool=d.tool;rsel=null}
+  else if(d.act==='asg'){const q=f.r[+d.i],free=f.t-f.r.reduce((a,x)=>a+x.w,0);if(q){if(+d.d>0&&free>0)q.w++;if(+d.d<0&&q.w>0)q.w--}}
+  else if(d.act==='del')f.r.splice(+d.i,1);
   else if(d.act==='hire'){const c=hc();if(S.m>=c&&f.t<60){S.m-=c;f.t++;sfx(700)}}
   else if(d.act==='sp'){const c=spc();if(f.sp<8&&S.m>=c){S.m-=c;f.sp++;sfx(800)}}
   else if(d.act==='tr'){const c=trc();if(f.tr<8&&S.m>=c){S.m-=c;f.tr++;sfx(800)}}
   draw();
 };
+// Zeichnen (Animation)
+function frame(){
+  requestAnimationFrame(frame);
+  if(level()<5)return;
+  const c=$('fc'),g=c.getContext('2d'),cs=getComputedStyle(document.documentElement),V=n=>cs.getPropertyValue(n).trim();
+  const line=V('--line'),gold=V('--gold'),ink=V('--ink');
+  g.fillStyle=V('--bg');g.fillRect(0,0,c.width,c.height);
+  g.strokeStyle=line;g.lineWidth=1;
+  for(let i=0;i<=GW;i++){g.beginPath();g.moveTo(i*CS+.5,0);g.lineTo(i*CS+.5,GH*CS);g.stroke()}
+  for(let j=0;j<=GH;j++){g.beginPath();g.moveTo(0,j*CS+.5);g.lineTo(GW*CS,j*CS+.5);g.stroke()}
+  const f=S.fac,by=byId(),t=performance.now()/1000;
+  g.lineWidth=2;
+  for(const q of f.r){
+    const a=by[q.s],b=by[q.d];if(!a||!b)continue;
+    const l1=Math.abs(b.x-a.x),L=rdist(q,by),sx=Math.sign(b.x-a.x),sy=Math.sign(b.y-a.y);
+    g.strokeStyle=gold;g.globalAlpha=.5;g.setLineDash([5,5]);
+    g.beginPath();g.moveTo((a.x+.5)*CS,(a.y+.5)*CS);g.lineTo((b.x+.5)*CS,(a.y+.5)*CS);g.lineTo((b.x+.5)*CS,(b.y+.5)*CS);g.stroke();
+    g.setLineDash([]);g.globalAlpha=1;
+    const T=rT(q,by);
+    for(let k=0;k<q.w;k++){
+      const ph=(t/T+k/q.w)%1,fw=ph<.5,u=fw?ph*2:1-(ph-.5)*2,d=u*L;
+      const x=d<=l1?a.x+.5+sx*d:b.x+.5,y=d<=l1?a.y+.5:a.y+.5+sy*(d-l1);
+      g.beginPath();g.arc(x*CS,y*CS,5,0,7);g.fillStyle=fw?gold:V('--panel');g.fill();g.strokeStyle=gold;g.lineWidth=1.5;g.stroke();
+    }
+  }
+  g.textAlign='center';g.textBaseline='middle';
+  for(const a of f.m){
+    const x=a.x*CS,y=a.y*CS;
+    g.fillStyle=V('--panel');g.fillRect(x+2,y+2,CS-4,CS-4);
+    g.lineWidth=a.id===rsel?3:1.5;g.strokeStyle=a.id===rsel?ink:gold;g.strokeRect(x+2,y+2,CS-4,CS-4);
+    g.font='20px serif';g.fillStyle=ink;g.fillText(ST[a.t].ic,x+CS/2,y+CS/2-2);
+    g.font='9px sans-serif';g.textAlign='left';g.fillText('#'+a.id,x+4,y+8);g.textAlign='center';
+    const buf=a.t===3?a.i:a.o;g.fillStyle=gold;g.fillRect(x+5,y+CS-8,(CS-10)*Math.min(1,buf/FC),3);
+    if(a.t<3&&a.o>=FC-1){g.fillStyle='#e5735c';g.beginPath();g.arc(x+CS-7,y+7,3.5,0,7);g.fill()}
+    if(a.t>0&&a.i<1){g.fillStyle='#5aa9e6';g.beginPath();g.arc(x+CS-7,y+CS-12,3.5,0,7);g.fill()}
+  }
+}
+frame();
 
 // Wiedergeburts-Shop (einmalige Käufe mit freien Punkten)
 const PU=[
@@ -437,7 +502,7 @@ document.getElementById('imp').onclick=()=>{
   try{
     const o=JSON.parse(atob(c.trim()));
     if(typeof o.m!=='number'||typeof o.tot!=='number')throw 0;
-    S=Object.assign(S0(),o);S.codes=S.codes||{};S.ach=S.ach||{};if(!S.fac||S.fac.v!==2)S.fac=newFac();
+    S=Object.assign(S0(),o);S.codes=S.codes||{};S.ach=S.ach||{};if(!S.fac||S.fac.v!==3)S.fac=newFac();
     save();draw();alert('Spielstand geladen.');
   }catch(e){alert('Dieser Code ist ungültig.')}
 };
